@@ -31,8 +31,8 @@ jobs:
 
     - name: Build Go binary
       run: |
-        GOOS=${{ matrix.os }} GOARCH=amd64 go build -o proz-${{ matrix.os }}-${{ matrix.go_version }} .
-        ls
+        GOOS=${{ matrix.os }} GOARCH=amd64 go build -o proz-${{ matrix.os }}-amd64-${{ matrix.go_version }} .
+        ls  # This will list the generated files
       env:
         GOOS: ${{ matrix.os }}
         GOARCH: amd64
@@ -41,8 +41,8 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          proz-linux-amd64
-          proz-darwin-amd64
-          proz-windows-amd64.exe
+          proz-linux-amd64-1.23
+          proz-darwin-amd64-1.23
+          proz-windows-amd64-1.23.exe
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
