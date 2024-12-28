@@ -1,0 +1,47 @@
+name: Build and Release Go Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger the workflow on tags that start with "v" (e.g., v1.0.0)
+
+jobs:
+  build:
+    permissions: write-all
+    runs-on: ubuntu-latest  # Use an Ubuntu runner to build for all platforms
+
+    strategy:
+      matrix:
+        os: [linux, windows, darwin]  # Linux, Windows, and Mac (Darwin) platforms
+        go_version: [1.23]  # You can specify the Go version you want to use
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: ${{ matrix.go_version }}  # Set the Go version from the matrix
+
+    - name: Set GOOS and GOARCH
+      run: |
+        echo "GOOS=${{ matrix.os }}" >> $GITHUB_ENV
+        echo "GOARCH=amd64" >> $GITHUB_ENV  # You can add other architectures if needed
+
+    - name: Build Go binary
+      run: |
+        GOOS=${{ matrix.os }} GOARCH=amd64 go build -o proz-${{ matrix.os }}-${{ matrix.go_version }} .
+      env:
+        GOOS: ${{ matrix.os }}
+        GOARCH: amd64
+
+    - name: Upload binaries as release assets
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          proz-linux-amd64
+          proz-darwin-amd64
+          proz-windows-amd64.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
