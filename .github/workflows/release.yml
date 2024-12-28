@@ -1,4 +1,4 @@
-name: Build and Release
+name: Generate release-artifacts
 
 on:
   push:
@@ -6,60 +6,17 @@ on:
       - 'v*' # Triggers on version tags like v1.0.0
 
 jobs:
-  build:
+  generate:
+    name: Generate cross-platform builds
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        goos: [linux, windows, darwin]
-        goarch: [amd64, arm64]
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      - name: Set up Go
-        uses: actions/setup-go@v4
+      - name: Checkout the repository
+        uses: actions/checkout@v2
+      - name: Generate build files
+        uses: thatisuday/go-cross-build@v1
         with:
-          go-version: '1.20'
-
-      - name: Build Binary
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: |
-          mkdir -p dist
-          go build -o dist/proz-${{ matrix.goos }}-${{ matrix.goarch }}
-
-      - name: Create Release Artifacts
-        run: |
-          cd dist
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            zip proz-${{ matrix.goos }}-${{ matrix.goarch }}.zip proz-${{ matrix.goos }}-${{ matrix.goarch }}
-          else
-            tar -czf proz-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz proz-${{ matrix.goos }}-${{ matrix.goarch }}
-          fi
-
-      - name: Upload Release Assets
-        uses: actions/upload-artifact@v3
-        with:
-          name: proz-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/proz-${{ matrix.goos }}-${{ matrix.goarch }}.*
-    
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download Artifacts
-        uses: actions/download-artifact@v3
-        with:
-          name: proz-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist
-
-      - name: Publish Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: dist/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          platforms: 'linux/amd64, darwin/amd64, windows/amd64'
+          package: 'proz'
+          name: 'proz'
+          compress: 'true'
+          dest: 'dist'
