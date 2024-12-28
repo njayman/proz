@@ -1,65 +1,111 @@
-name: Build and Release
+name: Build and release
 
 on:
   push:
     tags:
-      - 'v*' # Triggers on version tags like v1.0.0
+      - "v*"
 
 jobs:
   build:
+    permissions: write-all
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
         goos: [linux, windows, darwin]
         goarch: [amd64, arm64]
+        exclude:
+          - goos: windows
+            goarch: arm64
+          - goos: darwin
+            goarch: 386
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.20'
+          go-version: "1.23"
 
-      - name: Build Binary
+      - name: Define Output Filename and Archive Name
+        id: set_names
+        run: |
+          BINARY_NAME="proz"
+          ARCHIVE_BASE_NAME="proz-${{ matrix.goos }}-${{ matrix.goarch }}" # Base name for the archive file
+          ARCHIVE_EXT=""
+
+          if [ "${{ matrix.goos }}" == "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+            ARCHIVE_EXT=".zip"
+          else
+            ARCHIVE_EXT=".tar.gz"
+          fi
+
+          ARCHIVE_FULL_NAME="${ARCHIVE_BASE_NAME}${ARCHIVE_EXT}"
+
+          echo "BINARY_NAME=${BINARY_NAME}" >> $GITHUB_ENV
+          echo "ARCHIVE_BASE_NAME=${ARCHIVE_BASE_NAME}" >> $GITHUB_ENV # Store base name for archive
+          echo "ARCHIVE_FULL_NAME=${ARCHIVE_FULL_NAME}" >> $GITHUB_ENV # Store full name for upload
+          echo "ARCHIVE_EXT=${ARCHIVE_EXT}" >> $GITHUB_ENV
+
+      - name: Build Go binary
+        run: |
+          mkdir -p dist
+          go build -o dist/${{ env.BINARY_NAME }} .
+          ls -lh dist/
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-        run: |
-          mkdir -p dist
-          go build -o dist/proz-${{ matrix.goos }}-${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
 
-      - name: Create Release Artifacts
+      - name: Package Binary
         run: |
           cd dist
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            zip proz-${{ matrix.goos }}-${{ matrix.goarch }}.zip proz-${{ matrix.goos }}-${{ matrix.goarch }}
+          if [ "${{ matrix.goos }}" == "windows" ]; then
+            zip -r "${{ env.ARCHIVE_FULL_NAME }}" "${{ env.BINARY_NAME }}"
           else
-            tar -czf proz-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz proz-${{ matrix.goos }}-${{ matrix.goarch }}
+            tar -czvf "${{ env.ARCHIVE_FULL_NAME }}" "${{ env.BINARY_NAME }}"
           fi
+          ls -lh .
 
-      - name: Upload Release Assets
-        uses: actions/upload-artifact@v3
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: proz-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/proz-${{ matrix.goos }}-${{ matrix.goarch }}.*
-    
+          name: ${{ env.ARCHIVE_BASE_NAME }}
+          path: dist/${{ env.ARCHIVE_FULL_NAME }}
+
   release:
+    permissions: write-all
     needs: build
     runs-on: ubuntu-latest
-
     steps:
-      - name: Download Artifacts
-        uses: actions/download-artifact@v3
-        with:
-          name: proz-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Publish Release
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List downloaded artifacts for debugging
+        id: prepare_release_assets
+        run: |
+          find artifacts -type f -print
+
+      - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/*
+          # tag_name: ${{ github.ref_name }}
+          # run: |
+          #   ls
+          #   ls artifacts
+          files: |
+            artifacts/**/*.zip
+            artifacts/**/*.tar.gz
+
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

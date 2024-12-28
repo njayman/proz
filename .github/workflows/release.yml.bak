@@ -1,0 +1,38 @@
+name: Build and Release Linux Binary
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger only when a version tag like v1.0.0 is pushed
+
+jobs:
+  build:
+    permissions: write-all
+    name: Build Linux Binary
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.23' # Adjust to your Go version
+
+      - name: Build Binary
+        run: |
+          mkdir -p dist
+          GOOS=linux GOARCH=amd64 go build -o dist/proz-linux-amd64
+
+      - name: Package Binary
+        run: |
+          cd dist
+          tar -czvf proz-linux-amd64.tar.gz proz-linux-amd64
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/proz-linux-amd64.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
