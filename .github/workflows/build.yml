@@ -32,6 +32,7 @@ jobs:
     - name: Build Go binary
       run: |
         GOOS=${{ matrix.os }} GOARCH=amd64 go build -o proz-${{ matrix.os }}-${{ matrix.go_version }} .
+        ls
       env:
         GOOS: ${{ matrix.os }}
         GOARCH: amd64
