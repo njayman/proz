@@ -1,0 +1,96 @@
+name: Build and release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    permissions: write-all
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        goos: [linux, windows, darwin]
+        goarch: [amd64, arm64]
+        exclude:
+          - goos: windows
+            goarch: arm64
+          - goos: darwin
+            goarch: 386
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Define Output Filename
+        id: set_filename
+        run: |
+          BINARY_NAME="proz-${{ matrix.goos }}-${{ matrix.goarch }}"
+          if [ "${{ matrix.goos }}" == "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+            ARCHIVE_EXT=".zip"
+          else
+            ARCHIVE_EXT=".tar.gz"
+          fi
+          echo "BINARY_NAME=${BINARY_NAME}" >> $GITHUB_ENV
+          echo "ARCHIVE_NAME=${BINARY_NAME}${ARCHIVE_EXT}" >> $GITHUB_ENV
+          echo "ARCHIVE_EXT=${ARCHIVE_EXT}" >> $GITHUB_ENV
+
+      - name: Build go binary
+        run: |
+          mkdir -p dist
+          go build -o dist/${{ env.BINARY_NAME }} .
+          ls -lh dist/
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+
+      - name: Package Binary
+        run: |
+          if [ ! -d "dist" ]; then
+            echo "Error: dist directory does not exist. Build step may have failed."
+            exit 1
+          fi
+          cd dist
+          if [ "${{ matrix.goos }}" == "windows" ]; then
+            zip "${{ env.ARCHIVE_NAME }}" "${{ env.BINARY_NAME }}"
+          else
+            tar -czvf "${{ env.ARCHIVE_NAME }}" "${{ env.BINARY_NAME }}"
+          fi
+          ls -lh .
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: proz-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/${{ env.ARCHIVE_NAME }}
+
+  release:
+    permissions: write-all
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/**/*.{zip,tar.gz}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
