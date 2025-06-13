@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch: {}
 
 jobs:
   build:
@@ -66,7 +67,6 @@ jobs:
             tar -czvf "${{ env.ARCHIVE_NAME }}" "${{ env.BINARY_NAME }}"
           fi
           ls -lh .
-        working-directory: ./dist
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
