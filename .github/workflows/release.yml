@@ -46,15 +46,19 @@ jobs:
       - name: Build go binary
         run: |
           mkdir -p dist
-          export GOARM="${{ matrix.goarm }}"
           go build -o dist/${{ env.BINARY_NAME }} .
           ls -lh dist/
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
 
       - name: Package Binary
         run: |
+          if [ ! -d "dist" ]; then
+            echo "Error: dist directory does not exist. Build step may have failed."
+            exit 1
+          fi
           cd dist
           if [ "${{ matrix.goos }}" == "windows" ]; then
             zip "${{ env.ARCHIVE_NAME }}" "${{ env.BINARY_NAME }}"
