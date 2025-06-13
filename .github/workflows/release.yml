@@ -1,0 +1,98 @@
+name: Build and release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    permissions: write-all
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        goos: [linux, windows, darwin]
+        goarch: [amd64, arm64]
+        
+        exclude:
+          - goos: windows
+            goarch: arm64
+          - goos: darwin
+            goarch: 386
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Get Go version
+        id: go_version
+        run: echo "GO_VERSION=$(go version | awk '{print $3}')" >> $GITHUB_ENV
+
+      - name: Define Output Filename
+        id: set_filename
+        run: |
+          BINARY_NAME="proz-${{ matrix.goos }}-${{ matrix.goarch }}"
+          if [ "${{ matrix.goos }}" == "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+
+          if [ -n "${{ matrix.goarm }}" ]; then
+            BINARY_NAME="${BINARY_NAME}-armv${{ matrix.goarm }}"
+          fi
+          echo "BINARY_NAME=${BINARY_NAME}" >> $GITHUB_ENV
+          echo "ARCHIVE_NAME=${BINARY_NAME}" >> $GITHUB_ENV
+          if [ "${{ matrix.goos }}" == "windows" ]; then
+            echo "ARCHIVE_EXT=.zip" >> $GITHUB_ENV
+          else
+            echo "ARCHIVE_EXT=.tar.gz" >> $GITHUB_ENV
+          fi
+
+      - name: Build go binary
+        run: |
+          mkdir -p dist
+          export GOARM="${{ matrix.goarm }}"
+          go build -o dist/${{ env.BINARY_NAME }} .
+          ls -lh dist/
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+
+      - name: Package Binary
+        run: |
+          cd dist
+          if [ "${{ matrix.goos }}" == "windows" ]; then
+            zip -r ${{ env.ARCHIVE_NAME }}${{ env.ARCHIVE_EXT }} ${{ env.BINARY_NAME }}
+          else
+            zip -czvf ${{ env.ARCHIVE_NAME }}${{ env.ARCHIVE_EXT }} ${{ env.BINARY_NAME}}
+          fi
+          ls -lh
+        working-directory: dist
+  
+  release:
+    permissions: write-all
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/*/*${{ env.ARCHIVE_EXT }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
