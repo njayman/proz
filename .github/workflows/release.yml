@@ -1,6 +1,6 @@
 name: Build and release
 
-on: push
+on:  push
 
 jobs:
   build:
@@ -26,21 +26,28 @@ jobs:
         with:
           go-version: "1.23"
 
-      - name: Define Output Filename
-        id: set_filename
+      - name: Define Output Filename and Archive Name
+        id: set_names
         run: |
           BINARY_NAME="proz-${{ matrix.goos }}-${{ matrix.goarch }}"
+          ARCHIVE_BASE_NAME="proz-${{ matrix.goos }}-${{ matrix.goarch }}" # Base name for the archive file
+          ARCHIVE_EXT=""
+
           if [ "${{ matrix.goos }}" == "windows" ]; then
             BINARY_NAME="${BINARY_NAME}.exe"
             ARCHIVE_EXT=".zip"
           else
             ARCHIVE_EXT=".tar.gz"
           fi
+
+          ARCHIVE_FULL_NAME="${ARCHIVE_BASE_NAME}${ARCHIVE_EXT}"
+
           echo "BINARY_NAME=${BINARY_NAME}" >> $GITHUB_ENV
-          echo "ARCHIVE_NAME=${BINARY_NAME}${ARCHIVE_EXT}" >> $GITHUB_ENV
+          echo "ARCHIVE_BASE_NAME=${ARCHIVE_BASE_NAME}" >> $GITHUB_ENV # Store base name for archive
+          echo "ARCHIVE_FULL_NAME=${ARCHIVE_FULL_NAME}" >> $GITHUB_ENV # Store full name for upload
           echo "ARCHIVE_EXT=${ARCHIVE_EXT}" >> $GITHUB_ENV
 
-      - name: Build go binary
+      - name: Build Go binary
         run: |
           mkdir -p dist
           go build -o dist/${{ env.BINARY_NAME }} .
@@ -52,23 +59,19 @@ jobs:
 
       - name: Package Binary
         run: |
-          if [ ! -d "dist" ]; then
-            echo "Error: dist directory does not exist. Build step may have failed."
-            exit 1
-          fi
           cd dist
           if [ "${{ matrix.goos }}" == "windows" ]; then
-            zip "${{ env.ARCHIVE_NAME }}" "${{ env.BINARY_NAME }}"
+            zip -r "${{ env.ARCHIVE_FULL_NAME }}" "${{ env.BINARY_NAME }}"
           else
-            tar -czvf "${{ env.ARCHIVE_NAME }}" "${{ env.BINARY_NAME }}"
+            tar -czvf "${{ env.ARCHIVE_FULL_NAME }}" "${{ env.BINARY_NAME }}"
           fi
           ls -lh .
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: proz-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/${{ env.ARCHIVE_NAME }}
+          name: ${{ env.ARCHIVE_BASE_NAME }}
+          path: dist/${{ env.ARCHIVE_FULL_NAME }}
 
   release:
     permissions: write-all
@@ -83,11 +86,33 @@ jobs:
         with:
           path: artifacts
 
+      - name: List downloaded artifacts for debugging
+        id: prepare_release_assets
+        run: |
+          RELEASE_FILES=$(find artifacts -type f \( -name "*.zip" -o -name "*.tar.gz" \))
+          echo "Discovered release files:"
+          echo "$RELEASE_FILES"
+          echo "files_to_upload<<EOF" >> $GITHUB_OUTPUT
+          echo "$RESEASE_FILED" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          if [ -z "$RELEASE_FILES" ]; then
+            echo "::error::No release assets found to upload."
+            exit 1
+          fi
+        # run: |
+        #   find artifacts -type f -print
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref_name }}
-          files: artifacts/**/*.{zip,tar.gz}
+          # files: artifacts/**/*.{zip,tar.gz}
+          run: |
+            ls
+            ls artifacts
+          files: |
+            artifacts/**/*.zip
+            artifacts/**/*.tar.gz
           draft: false
           prerelease: false
         env:
