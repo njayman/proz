@@ -107,6 +107,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           # files: artifacts/**/*.{zip,tar.gz}
+          tag_name: ${{ github.ref_name }}
           run: |
             ls
             ls artifacts
