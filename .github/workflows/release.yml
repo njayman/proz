@@ -1,6 +1,9 @@
 name: Build and release
 
-on:  push
+on:
+  push:
+    tags:
+      - "v*"
 
 jobs:
   build:
@@ -29,7 +32,7 @@ jobs:
       - name: Define Output Filename and Archive Name
         id: set_names
         run: |
-          BINARY_NAME="proz-${{ matrix.goos }}-${{ matrix.goarch }}"
+          BINARY_NAME="proz"
           ARCHIVE_BASE_NAME="proz-${{ matrix.goos }}-${{ matrix.goarch }}" # Base name for the archive file
           ARCHIVE_EXT=""
 
@@ -89,31 +92,19 @@ jobs:
       - name: List downloaded artifacts for debugging
         id: prepare_release_assets
         run: |
-          RELEASE_FILES=$(find artifacts -type f \( -name "*.zip" -o -name "*.tar.gz" \))
-          echo "Discovered release files:"
-          echo "$RELEASE_FILES"
-          echo "files_to_upload<<EOF" >> $GITHUB_OUTPUT
-          echo "$RESEASE_FILED" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-          if [ -z "$RELEASE_FILES" ]; then
-            echo "::error::No release assets found to upload."
-            exit 1
-          fi
-        # run: |
-        #   find artifacts -type f -print
+          find artifacts -type f -print
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          # files: artifacts/**/*.{zip,tar.gz}
-          tag_name: ${{ github.ref_name }}
-          run: |
-            ls
-            ls artifacts
+          # tag_name: ${{ github.ref_name }}
+          # run: |
+          #   ls
+          #   ls artifacts
           files: |
             artifacts/**/*.zip
             artifacts/**/*.tar.gz
+
           draft: false
           prerelease: false
         env:
