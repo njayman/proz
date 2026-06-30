@@ -1,10 +1,10 @@
 package cmd
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -45,7 +45,10 @@ var addCmd = &cobra.Command{
 
 		project := Project{Name: name, Path: path, Tags: tags}
 		utils.EnsureConfigFolderExists()
-		saveProject(project)
+		if err := saveProject(project); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return
+		}
 		fmt.Printf("Project '%s' added successfully!\n", name)
 	},
 }
@@ -56,25 +59,28 @@ func init() {
 	addCmd.Flags().StringVarP(&projectTags, "tags", "t", "", "Comma seperated tags for the project directory")
 }
 
-func saveProject(project Project) {
-	var execPath string
-	fmt.Println("Enter the command/binary to open this project (e.g., code, nvim):")
-	fmt.Scanln(&execPath)
-	if execPath != "" {
-		if _, err := exec.LookPath(execPath); err != nil {
-			fmt.Printf("Warning: '%s' not found in PATH\n", execPath)
-		}
+func saveProject(project Project) error {
+	binaries := listPathBinaries()
+	bin, err := runBinaryPicker(binaries)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Warning: TUI unavailable — saving without executable")
+		fmt.Fprintln(os.Stderr, "  Use 'proz edit' to set an executable later")
+	} else if bin != "" {
+		project.Executable = bin
 	}
-	project.Executable = execPath
 
-	var args string
-	fmt.Print("Enter arguments for the command (space-separated, or press Enter for none): ")
-	fmt.Scanln(&args)
-	if args != "" {
-		project.Arguments = strings.Fields(args)
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("Arguments (space-separated, or press Enter for none): ")
+	argsStr, err := reader.ReadString('\n')
+	if err == nil {
+		argsStr = strings.TrimSpace(argsStr)
+		if argsStr != "" {
+			project.Arguments = strings.Fields(argsStr)
+		}
 	}
 
 	appendProject(project)
+	return nil
 }
 
 func appendProject(project Project) {

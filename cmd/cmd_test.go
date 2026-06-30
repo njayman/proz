@@ -107,11 +107,8 @@ func TestHasAnyTag_TrimSpaces(t *testing.T) {
 	}
 }
 
-func TestOpenProject_InvalidPath(t *testing.T) {
-	err := openProject(Project{Name: "nonexistent", Path: "/proc/does-not-exist/xyz"})
-	if err == nil {
-		t.Fatal("expected error for invalid path, got nil")
-	}
+func TestOpenProjectDetached_EmptyExec(t *testing.T) {
+	openProjectDetached(Project{Name: "test", Path: "/nonexistent"})
 }
 
 func TestSaveAndLoadRoundTrip(t *testing.T) {

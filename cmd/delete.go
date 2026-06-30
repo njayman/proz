@@ -40,16 +40,22 @@ var deleteCmd = &cobra.Command{
 			}
 			idx = found
 		} else {
-			fmt.Println("Stored projects")
-			for i, p := range projects {
-				fmt.Printf("[%d] %s (Path: %s, Tags: %v)\n", i+1, p.Name, p.Path, p.Tags)
-			}
-			fmt.Print("Select a project to delete by number: ")
-			fmt.Scanln(&idx)
-			idx--
-			if idx < 0 || idx >= len(projects) {
-				fmt.Println("Invalid selection")
+			selected, err := runProjectPicker(projects)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "Warning: TUI unavailable, showing text list")
+				for i, p := range projects {
+					fmt.Printf("[%d] %s (Path: %s, Tags: %v)\n", i+1, p.Name, p.Path, p.Tags)
+				}
 				return
+			}
+			if selected == nil {
+				return
+			}
+			for i, p := range projects {
+				if p.Name == selected.Name && p.Path == selected.Path {
+					idx = i
+					break
+				}
 			}
 		}
 

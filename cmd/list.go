@@ -45,28 +45,22 @@ var listCmd = &cobra.Command{
 			return
 		}
 
-		fmt.Println("Stored projects")
-		for i, project := range projects {
-			fmt.Printf("[%d] %s (Path: %s, Tags: %v)\n", i+1, project.Name, project.Path, project.Tags)
+		selected, err := runProjectPicker(projects)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Warning: TUI unavailable, showing text list")
+			for i, p := range projects {
+				fmt.Printf("[%d] %s (Path: %s, Tags: %v)\n", i+1, p.Name, p.Path, p.Tags)
+			}
+			return
 		}
-
-		var choice int
-
-		fmt.Print("Select a project to open by number: ")
-		fmt.Scanln(&choice)
-
-		if choice < 1 || choice > len(projects) {
-			fmt.Println("Invalid selection")
-
+		if selected == nil {
 			return
 		}
 
-		selectedProject := projects[choice-1]
+		openProjectDetached(*selected)
 
-		if err := openProject(selectedProject); err != nil {
-			fmt.Printf("Error opening project: %v\n", err)
-		}
-
+		fmt.Println(selected.Path)
+		fmt.Fprintln(os.Stderr, "Tip: use 'proz add'/'proz delete' to manage projects")
 	},
 }
 
@@ -76,36 +70,24 @@ func init() {
 	listCmd.Flags().StringVarP(&listTags, "tags", "t", "", "Filter projects by comma-separated tags")
 }
 
-func hasAnyTag(projectTags, filterTags []string) bool {
-	for _, ft := range filterTags {
-		ft = strings.TrimSpace(ft)
-		for _, pt := range projectTags {
-			if strings.EqualFold(pt, ft) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func openProject(project Project) error {
+func openProjectDetached(project Project) {
 	if project.Executable == "" {
-		if err := os.Chdir(project.Path); err != nil {
-			return fmt.Errorf("failed to change directory to '%s': %w", project.Path, err)
-		}
-
-		fmt.Printf("Changed directory to: %s\n", project.Path)
-
-		return nil
+		return
 	}
 
+	os.Chdir(project.Path)
 	cmd := exec.Command(project.Executable, append(project.Arguments, project.Path)...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	fmt.Printf("Opening project '%s' with command: %s %v\n", project.Name, project.Executable, project.Arguments)
-
-	return cmd.Run()
+	if tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0); err == nil {
+		defer tty.Close()
+		cmd.Stdin = tty
+		cmd.Stdout = tty
+		cmd.Stderr = tty
+	} else {
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
+	cmd.Run()
 }
 
 func loadProjects() ([]Project, error) {
