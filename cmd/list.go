@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"proz/utils"
 
 	"github.com/spf13/cobra"
 )
+
+var listTags string
 
 var listCmd = &cobra.Command{
 	Use:   "list",
@@ -22,6 +25,17 @@ var listCmd = &cobra.Command{
 			fmt.Printf("Error loading projects: %v\n", err)
 
 			return
+		}
+
+		if listTags != "" {
+			filterTags := strings.Split(listTags, ",")
+			var filtered []Project
+			for _, p := range projects {
+				if hasAnyTag(p.Tags, filterTags) {
+					filtered = append(filtered, p)
+				}
+			}
+			projects = filtered
 		}
 
 		if len(projects) == 0 {
@@ -58,6 +72,20 @@ var listCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(listCmd)
+
+	listCmd.Flags().StringVarP(&listTags, "tags", "t", "", "Filter projects by comma-separated tags")
+}
+
+func hasAnyTag(projectTags, filterTags []string) bool {
+	for _, ft := range filterTags {
+		ft = strings.TrimSpace(ft)
+		for _, pt := range projectTags {
+			if strings.EqualFold(pt, ft) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func openProject(project Project) error {

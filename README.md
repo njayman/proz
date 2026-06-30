@@ -6,11 +6,12 @@ their projects.
 ## Features
 
 - Add Projects: Save project directories with custom names and tags for easy organization.
-
 - List Projects: View your projects in a list.
-
+- Delete Projects: Remove projects from your list.
 - Open Projects: Launch projects using a specified executable
 (e.g., code, vim, notepad) or cd into them directly.
+- Tag-Based Filtering: Filter projects by tags when listing.
+- Shell Completion: Tab completion for bash, zsh, fish, and PowerShell.
 
 ## Usage
 
@@ -24,21 +25,45 @@ Enter arguments for the command (space-separated, or press Enter for none):
 Project 'proz-code' added successfully!
 ```
 
+### List projects
+
+```bash
+proz list
+```
+
+### Filter by tags
+
+```bash
+proz list --tags go,cli
+```
+
+### Delete a project
+
+```bash
+proz delete
+# or
+proz delete proz-code
+```
+
 ### Open a project
 
 ```bash
-proz # 'proz list' also workd
+proz
 Stored projects
-[1] proz (Path: /home/njayman/Development/proz, Tags: [proz, go, nvim])
-[2] proz-code (Path: /home/njayman/Development/proz, Tags: [proz, go, vscode])
-Select a project to open by number: 2
-Opening project 'proz-code' with command: code []
+[1] proz (Path: /home/user/projects/proz, Tags: [proz, go])
+Select a project to open by number: 1
+```
 
+### Generate shell completion
+
+```bash
+source <(proz completion bash)    # bash
+source <(proz completion zsh)     # zsh
+proz completion fish > ~/.config/fish/completions/proz.fish  # fish
 ```
 
 ## Planned Features
 
-- Tag-Based Filtering: Filter projects by tags for faster selection.
 - TUI Mode: Add a text-based user interface (TUI) for enhanced navigation.
 
 ## Contributing
@@ -51,9 +76,6 @@ Contributions are welcome! Here's how you can help:
 - Push the branch (git push origin feature-name).
 - Open a pull request.
 
-## Acknowledgments
+## License
 
-Special thanks to the open-source community for inspiration and support
-in building this tool.
-
-Feel free to suggest edits, enhancements, or additional features in the issues section!
+GNU General Public License v3. See [LICENSE](LICENSE).
