@@ -1,6 +1,6 @@
 package main
 
-import "proz/cmd"
+import "github.com/njayman/proz/cmd"
 
 func main() {
 	cmd.Execute()

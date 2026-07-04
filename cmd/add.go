@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"proz/utils"
+	"github.com/njayman/proz/utils"
 )
 
 type Project struct {
@@ -16,10 +16,7 @@ type Project struct {
 	Path       string   `json:"path"`
 	Executable string   `json:"executable"`
 	Arguments  []string `json:"arguments"`
-	Tags       []string `json:"tags"`
 }
-
-var projectTags string
 
 var addCmd = &cobra.Command{
 	Use:   "add [project-name]",
@@ -33,17 +30,7 @@ var addCmd = &cobra.Command{
 			return
 		}
 
-		tags := []string{}
-		if projectTags != "" {
-			for _, t := range strings.Split(projectTags, ",") {
-				t = strings.TrimSpace(t)
-				if t != "" {
-					tags = append(tags, t)
-				}
-			}
-		}
-
-		project := Project{Name: name, Path: path, Tags: tags}
+		project := Project{Name: name, Path: path}
 		utils.EnsureConfigFolderExists()
 		if err := saveProject(project); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -55,8 +42,6 @@ var addCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(addCmd)
-
-	addCmd.Flags().StringVarP(&projectTags, "tags", "t", "", "Comma seperated tags for the project directory")
 }
 
 func saveProject(project Project) error {
@@ -67,6 +52,7 @@ func saveProject(project Project) error {
 		fmt.Fprintln(os.Stderr, "  Use 'proz edit' to set an executable later")
 	} else if bin != "" {
 		project.Executable = bin
+		pushRecentExec(bin)
 	}
 
 	reader := bufio.NewReader(os.Stdin)

@@ -1,4 +1,4 @@
-module proz
+module github.com/njayman/proz
 
 go 1.24.2
 

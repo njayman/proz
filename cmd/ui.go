@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -178,16 +179,21 @@ type binaryPickerModel struct {
 	showAll      bool
 	selected     string
 	cancelled    bool
+	recentExecs  []string
 }
 
 func newBinaryPickerModel(binaries []string) binaryPickerModel {
 	apps := parseDesktopFiles()
-	return binaryPickerModel{
+	recent := loadRecentExecs()
+	m := binaryPickerModel{
 		desktopApps:  apps,
 		filteredApps: apps,
 		allBinaries:  binaries,
 		filtered:     binaries,
+		recentExecs:  recent,
 	}
+	m.sortRecent()
+	return m
 }
 
 func (m binaryPickerModel) Init() tea.Cmd { return nil }
@@ -298,6 +304,42 @@ func (m *binaryPickerModel) applyFilter() {
 	if m.cursor < 0 {
 		m.cursor = 0
 	}
+	m.sortRecent()
+}
+
+func (m *binaryPickerModel) sortRecent() {
+	if len(m.recentExecs) == 0 {
+		return
+	}
+	recent := make(map[string]int, len(m.recentExecs))
+	for i, e := range m.recentExecs {
+		recent[e] = i
+	}
+	if m.showAll {
+		sort.Slice(m.filtered, func(i, j int) bool {
+			ri, okI := recent[m.filtered[i]]
+			rj, okJ := recent[m.filtered[j]]
+			if okI != okJ {
+				return okI
+			}
+			if okI {
+				return ri < rj
+			}
+			return m.filtered[i] < m.filtered[j]
+		})
+	} else {
+		sort.Slice(m.filteredApps, func(i, j int) bool {
+			ri, okI := recent[m.filteredApps[i].Exec]
+			rj, okJ := recent[m.filteredApps[j].Exec]
+			if okI != okJ {
+				return okI
+			}
+			if okI {
+				return ri < rj
+			}
+			return strings.ToLower(m.filteredApps[i].Name) < strings.ToLower(m.filteredApps[j].Name)
+		})
+	}
 }
 
 func (m binaryPickerModel) View() string {
@@ -402,8 +444,8 @@ type editFormModel struct {
 }
 
 func newEditFormModel(project Project) editFormModel {
-	labels := []string{"Name", "Executable", "Arguments", "Tags"}
-	inputs := make([]textinput.Model, 4)
+	labels := []string{"Name", "Executable", "Arguments"}
+	inputs := make([]textinput.Model, 3)
 
 	for i := range inputs {
 		inputs[i] = textinput.New()
@@ -417,8 +459,6 @@ func newEditFormModel(project Project) editFormModel {
 	inputs[1].Placeholder = "empty for cd, or type a path"
 
 	inputs[2].SetValue(strings.Join(project.Arguments, " "))
-
-	inputs[3].SetValue(strings.Join(project.Tags, ","))
 
 	return editFormModel{
 		project: project,
@@ -447,19 +487,6 @@ func (m editFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.project.Arguments = strings.Fields(argsStr)
 			} else {
 				m.project.Arguments = nil
-			}
-			tagsStr := strings.TrimSpace(m.inputs[3].Value())
-			if tagsStr != "" {
-				var tags []string
-				for _, t := range strings.Split(tagsStr, ",") {
-					t = strings.TrimSpace(t)
-					if t != "" {
-						tags = append(tags, t)
-					}
-				}
-				m.project.Tags = tags
-			} else {
-				m.project.Tags = nil
 			}
 			return m, tea.Quit
 		case "tab", "down":

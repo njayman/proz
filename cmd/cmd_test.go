@@ -71,49 +71,13 @@ func TestLoadProjects_MultipleProjects(t *testing.T) {
 	}
 }
 
-func TestHasAnyTag_Match(t *testing.T) {
-	if !hasAnyTag([]string{"go", "cli"}, []string{"cli"}) {
-		t.Fatal("expected match")
-	}
-}
-
-func TestHasAnyTag_NoMatch(t *testing.T) {
-	if hasAnyTag([]string{"go", "rust"}, []string{"python"}) {
-		t.Fatal("expected no match")
-	}
-}
-
-func TestHasAnyTag_CaseInsensitive(t *testing.T) {
-	if !hasAnyTag([]string{"Go"}, []string{"go"}) {
-		t.Fatal("expected case-insensitive match")
-	}
-}
-
-func TestHasAnyTag_EmptyFilter(t *testing.T) {
-	if hasAnyTag([]string{"go"}, []string{""}) {
-		t.Fatal("expected no match for empty filter")
-	}
-}
-
-func TestHasAnyTag_EmptyProjectTags(t *testing.T) {
-	if hasAnyTag([]string{}, []string{"go"}) {
-		t.Fatal("expected no match for empty project tags")
-	}
-}
-
-func TestHasAnyTag_TrimSpaces(t *testing.T) {
-	if !hasAnyTag([]string{"go", "cli"}, []string{" go "}) {
-		t.Fatal("expected match with trimmed spaces")
-	}
-}
-
 func TestOpenProjectDetached_EmptyExec(t *testing.T) {
 	openProjectDetached(Project{Name: "test", Path: "/nonexistent"})
 }
 
 func TestSaveAndLoadRoundTrip(t *testing.T) {
 	setupTestDir(t)
-	p := Project{Name: "rt", Path: "/tmp", Executable: "echo", Arguments: []string{"hello"}, Tags: []string{"test"}}
+	p := Project{Name: "rt", Path: "/tmp", Executable: "echo", Arguments: []string{"hello"}}
 	appendProject(p)
 	projects, err := loadProjects()
 	if err != nil {
@@ -137,5 +101,75 @@ func TestSaveAndLoadAppends(t *testing.T) {
 	}
 	if len(projects) != 2 {
 		t.Fatalf("expected 2 projects after two saves, got %d", len(projects))
+	}
+}
+
+func TestLoadRecentExecs_FileNotExist(t *testing.T) {
+	setupTestDir(t)
+	execs := loadRecentExecs()
+	if execs != nil {
+		t.Fatalf("expected nil for missing file, got %v", execs)
+	}
+}
+
+func TestPushRecentExec_AddsFirst(t *testing.T) {
+	setupTestDir(t)
+	pushRecentExec("code")
+	execs := loadRecentExecs()
+	if len(execs) != 1 || execs[0] != "code" {
+		t.Fatalf("expected [code], got %v", execs)
+	}
+}
+
+func TestPushRecentExec_Deduplicates(t *testing.T) {
+	setupTestDir(t)
+	pushRecentExec("code")
+	pushRecentExec("code")
+	execs := loadRecentExecs()
+	if len(execs) != 1 {
+		t.Fatalf("expected 1 after dedup, got %v", execs)
+	}
+}
+
+func TestPushRecentExec_MovesToFront(t *testing.T) {
+	setupTestDir(t)
+	pushRecentExec("vim")
+	pushRecentExec("code")
+	pushRecentExec("nvim")
+	pushRecentExec("code")
+	execs := loadRecentExecs()
+	if len(execs) != 3 {
+		t.Fatalf("expected 3 items, got %v", execs)
+	}
+	if execs[0] != "code" {
+		t.Fatalf("expected 'code' first, got %v", execs)
+	}
+}
+
+func TestPushRecentExec_MaxFour(t *testing.T) {
+	setupTestDir(t)
+	pushRecentExec("a")
+	pushRecentExec("b")
+	pushRecentExec("c")
+	pushRecentExec("d")
+	pushRecentExec("e")
+	execs := loadRecentExecs()
+	if len(execs) != 4 {
+		t.Fatalf("expected 4 items max, got %d: %v", len(execs), execs)
+	}
+	if execs[3] != "b" {
+		t.Fatalf("expected 'b' as oldest kept, got %v", execs)
+	}
+}
+
+func TestSaveRecentExecs_RoundTrip(t *testing.T) {
+	setupTestDir(t)
+	err := saveRecentExecs([]string{"nvim", "code"})
+	if err != nil {
+		t.Fatalf("save failed: %v", err)
+	}
+	execs := loadRecentExecs()
+	if len(execs) != 2 || execs[0] != "nvim" || execs[1] != "code" {
+		t.Fatalf("round-trip failed: %v", execs)
 	}
 }

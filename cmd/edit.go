@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"proz/utils"
+	"github.com/njayman/proz/utils"
 
 	"github.com/spf13/cobra"
 )
@@ -46,7 +46,7 @@ var editCmd = &cobra.Command{
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "Warning: TUI unavailable")
 				for i, p := range projects {
-					fmt.Printf("[%d] %s (Path: %s, Tags: %v)\n", i+1, p.Name, p.Path, p.Tags)
+					fmt.Printf("[%d] %s (%s)\n", i+1, p.Name, p.Path)
 				}
 				return
 			}
@@ -92,8 +92,6 @@ var editCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(editCmd)
-
-	editCmd.Flags().StringVarP(&projectTags, "tags", "t", "", "Set tags for the project (comma separated)")
 }
 
 func editProjectText(original *Project) *Project {
@@ -124,27 +122,10 @@ func editProjectText(original *Project) *Project {
 		args = strings.Fields(argsStr)
 	}
 
-	currentTags := strings.Join(original.Tags, ",")
-	fmt.Printf("Tags (%s): ", currentTags)
-	tagsStr, _ := reader.ReadString('\n')
-	tagsStr = strings.TrimSpace(tagsStr)
-	var tags []string
-	if tagsStr == "" && currentTags != "" {
-		tags = original.Tags
-	} else if tagsStr != "" {
-		for _, t := range strings.Split(tagsStr, ",") {
-			t = strings.TrimSpace(t)
-			if t != "" {
-				tags = append(tags, t)
-			}
-		}
-	}
-
 	return &Project{
 		Name:       name,
 		Path:       original.Path,
 		Executable: exec,
 		Arguments:  args,
-		Tags:       tags,
 	}
 }

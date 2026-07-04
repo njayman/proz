@@ -7,6 +7,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func init() {
+	rootCmd.CompletionOptions.DisableDefaultCmd = true
+}
+
 var rootCmd = &cobra.Command{
 	Use:   "proz",
 	Short: "proz is a free & open source cli tool for managing project directories",

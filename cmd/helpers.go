@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 )
 
 func listPathBinaries() []string {
@@ -40,14 +39,4 @@ func listPathBinaries() []string {
 	return binaries
 }
 
-func hasAnyTag(projectTags, filterTags []string) bool {
-	for _, ft := range filterTags {
-		ft = strings.TrimSpace(ft)
-		for _, pt := range projectTags {
-			if strings.EqualFold(pt, ft) {
-				return true
-			}
-		}
-	}
-	return false
-}
+

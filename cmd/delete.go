@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"proz/utils"
+	"github.com/njayman/proz/utils"
 
 	"github.com/spf13/cobra"
 )
@@ -44,7 +44,7 @@ var deleteCmd = &cobra.Command{
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "Warning: TUI unavailable, showing text list")
 				for i, p := range projects {
-					fmt.Printf("[%d] %s (Path: %s, Tags: %v)\n", i+1, p.Name, p.Path, p.Tags)
+					fmt.Printf("[%d] %s (%s)\n", i+1, p.Name, p.Path)
 				}
 				return
 			}

@@ -5,13 +5,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
-	"proz/utils"
+	"github.com/njayman/proz/utils"
 
 	"github.com/spf13/cobra"
 )
-
-var listTags string
 
 var listCmd = &cobra.Command{
 	Use:   "list",
@@ -27,17 +24,6 @@ var listCmd = &cobra.Command{
 			return
 		}
 
-		if listTags != "" {
-			filterTags := strings.Split(listTags, ",")
-			var filtered []Project
-			for _, p := range projects {
-				if hasAnyTag(p.Tags, filterTags) {
-					filtered = append(filtered, p)
-				}
-			}
-			projects = filtered
-		}
-
 		if len(projects) == 0 {
 			fmt.Println("no projects found")
 			fmt.Println("add more projects using the add command")
@@ -49,7 +35,7 @@ var listCmd = &cobra.Command{
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Warning: TUI unavailable, showing text list")
 			for i, p := range projects {
-				fmt.Printf("[%d] %s (Path: %s, Tags: %v)\n", i+1, p.Name, p.Path, p.Tags)
+				fmt.Printf("[%d] %s (%s)\n", i+1, p.Name, p.Path)
 			}
 			return
 		}
@@ -66,14 +52,14 @@ var listCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(listCmd)
-
-	listCmd.Flags().StringVarP(&listTags, "tags", "t", "", "Filter projects by comma-separated tags")
 }
 
 func openProjectDetached(project Project) {
 	if project.Executable == "" {
 		return
 	}
+
+	pushRecentExec(project.Executable)
 
 	os.Chdir(project.Path)
 	cmd := exec.Command(project.Executable, append(project.Arguments, project.Path)...)
