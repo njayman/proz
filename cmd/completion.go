@@ -9,10 +9,14 @@ import (
 )
 
 var completionCmd = &cobra.Command{
-	Use:   "completion",
+	Use:   "completion [bash|zsh|fish|powershell]",
 	Short: "Generate shell completion script",
+	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		shell := filepath.Base(os.Getenv("SHELL"))
+		if len(args) > 0 {
+			shell = args[0]
+		}
 		var name, rc string
 
 		switch shell {

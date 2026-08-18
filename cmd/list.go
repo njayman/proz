@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var listJSON bool
+
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "lists the project directory lists",
@@ -21,6 +23,16 @@ var listCmd = &cobra.Command{
 		if err != nil {
 			fmt.Printf("Error loading projects: %v\n", err)
 
+			return
+		}
+
+		if listJSON {
+			out, err := json.MarshalIndent(projects, "", "  ")
+			if err != nil {
+				fmt.Printf("Error serializing projects: %v\n", err)
+				return
+			}
+			fmt.Println(string(out))
 			return
 		}
 
@@ -51,6 +63,7 @@ var listCmd = &cobra.Command{
 }
 
 func init() {
+	listCmd.Flags().BoolVar(&listJSON, "json", false, "print projects as JSON instead of opening the picker")
 	rootCmd.AddCommand(listCmd)
 }
 
