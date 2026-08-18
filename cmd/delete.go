@@ -3,8 +3,8 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"github.com/njayman/proz/utils"
+	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -40,7 +40,7 @@ var deleteCmd = &cobra.Command{
 			}
 			idx = found
 		} else {
-			selected, err := runProjectPicker(projects)
+			selected, _, err := runProjectPicker(projects)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "Warning: TUI unavailable, showing text list")
 				for i, p := range projects {

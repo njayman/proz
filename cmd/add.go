@@ -5,17 +5,34 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/njayman/proz/utils"
+	"github.com/spf13/cobra"
 )
 
 type Project struct {
-	Name       string   `json:"name"`
-	Path       string   `json:"path"`
-	Executable string   `json:"executable"`
-	Arguments  []string `json:"arguments"`
+	Name      string   `json:"name"`
+	Path      string   `json:"path"`
+	Programs  []string `json:"programs,omitempty"`
+	Arguments []string `json:"arguments"`
+}
+
+// UnmarshalJSON migrates the old single "executable" field into Programs.
+func (p *Project) UnmarshalJSON(data []byte) error {
+	type Alias Project
+	aux := struct {
+		Executable string `json:"executable"`
+		*Alias
+	}{Alias: (*Alias)(p)}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if len(p.Programs) == 0 && aux.Executable != "" {
+		p.Programs = []string{aux.Executable}
+	}
+	return nil
 }
 
 var addCmd = &cobra.Command{
@@ -44,15 +61,39 @@ func init() {
 	rootCmd.AddCommand(addCmd)
 }
 
+func addFromPath(path string) {
+	info, err := os.Stat(path)
+	if err != nil || !info.IsDir() {
+		fmt.Fprintf(os.Stderr, "Error: '%s' is not a directory\n", path)
+		os.Exit(1)
+	}
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		absPath = path
+	}
+
+	name := filepath.Base(absPath)
+	project := Project{Name: name, Path: absPath}
+	utils.EnsureConfigFolderExists()
+	if err := saveProject(project); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return
+	}
+	fmt.Printf("Project '%s' added successfully!\n", name)
+}
+
 func saveProject(project Project) error {
 	binaries := listPathBinaries()
-	bin, err := runBinaryPicker(binaries)
+	programs, err := runBinaryPicker(binaries)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Warning: TUI unavailable — saving without executable")
-		fmt.Fprintln(os.Stderr, "  Use 'proz edit' to set an executable later")
-	} else if bin != "" {
-		project.Executable = bin
-		pushRecentExec(bin)
+		fmt.Fprintln(os.Stderr, "Warning: TUI unavailable — saving without a program")
+		fmt.Fprintln(os.Stderr, "  Use 'proz edit' to set one later")
+	} else if len(programs) > 0 {
+		project.Programs = programs
+		for _, p := range programs {
+			pushRecentExec(p)
+		}
 	}
 
 	reader := bufio.NewReader(os.Stdin)

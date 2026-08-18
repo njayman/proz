@@ -53,7 +53,7 @@ jobs:
       - name: Build Go binary
         run: |
           mkdir -p dist
-          go build -o dist/${{ env.BINARY_NAME }} .
+          go build -trimpath -ldflags="-s -w" -o dist/${{ env.BINARY_NAME }} .
           ls -lh dist/
         env:
           GOOS: ${{ matrix.goos }}

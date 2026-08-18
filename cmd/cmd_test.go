@@ -72,12 +72,12 @@ func TestLoadProjects_MultipleProjects(t *testing.T) {
 }
 
 func TestOpenProjectDetached_EmptyExec(t *testing.T) {
-	openProjectDetached(Project{Name: "test", Path: "/nonexistent"})
+	openProjectDetached(Project{Name: "test", Path: "/nonexistent"}, "")
 }
 
 func TestSaveAndLoadRoundTrip(t *testing.T) {
 	setupTestDir(t)
-	p := Project{Name: "rt", Path: "/tmp", Executable: "echo", Arguments: []string{"hello"}}
+	p := Project{Name: "rt", Path: "/tmp", Programs: []string{"echo"}, Arguments: []string{"hello"}}
 	appendProject(p)
 	projects, err := loadProjects()
 	if err != nil {
@@ -86,8 +86,21 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 	if len(projects) != 1 {
 		t.Fatalf("expected 1 project, got %d", len(projects))
 	}
-	if projects[0].Name != "rt" || projects[0].Executable != "echo" {
+	if projects[0].Name != "rt" || len(projects[0].Programs) != 1 || projects[0].Programs[0] != "echo" {
 		t.Fatalf("round-trip failed: %+v", projects[0])
+	}
+}
+
+func TestLoadProjects_MigratesLegacyExecutable(t *testing.T) {
+	path := setupTestDir(t)
+	os.MkdirAll(filepath.Dir(path), 0775)
+	os.WriteFile(path, []byte(`[{"name":"legacy","path":"/tmp","executable":"nvim","arguments":[]}]`), 0644)
+	projects, err := loadProjects()
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(projects) != 1 || len(projects[0].Programs) != 1 || projects[0].Programs[0] != "nvim" {
+		t.Fatalf("expected legacy executable migrated to Programs, got %+v", projects)
 	}
 }
 

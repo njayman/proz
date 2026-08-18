@@ -10,15 +10,15 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-
 type projectPickerModel struct {
-	projects   []Project
-	filtered   []Project
-	cursor     int
-	filter     string
-	searchMode bool
-	selected   *Project
-	cancelled  bool
+	projects     []Project
+	filtered     []Project
+	cursor       int
+	filter       string
+	searchMode   bool
+	selected     *Project
+	addRequested bool
+	cancelled    bool
 }
 
 func newProjectPickerModel(projects []Project) projectPickerModel {
@@ -37,8 +37,18 @@ func (m projectPickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			m.cancelled = true
 			return m, tea.Quit
+		case "q":
+			if m.searchMode {
+				m.filter += "q"
+				m.applyFilter()
+			} else {
+				m.cancelled = true
+				return m, tea.Quit
+			}
 		case "enter":
-			if len(m.filtered) > 0 {
+			if m.cursor == len(m.filtered) {
+				m.addRequested = true
+			} else if len(m.filtered) > 0 {
 				m.selected = &m.filtered[m.cursor]
 			}
 			return m, tea.Quit
@@ -56,7 +66,7 @@ func (m projectPickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.filter = ""
 			m.applyFilter()
 		case "down", "j":
-			if m.cursor < len(m.filtered)-1 {
+			if m.cursor < len(m.filtered) {
 				m.cursor++
 			}
 		case "up", "k":
@@ -99,8 +109,8 @@ func (m *projectPickerModel) applyFilter() {
 			}
 		}
 	}
-	if m.cursor >= len(m.filtered) {
-		m.cursor = max(0, len(m.filtered)-1)
+	if m.cursor > len(m.filtered) {
+		m.cursor = len(m.filtered)
 	}
 	if m.cursor < 0 {
 		m.cursor = 0
@@ -135,37 +145,46 @@ func (m projectPickerModel) View() string {
 			if i == m.cursor {
 				prefix = "▸ "
 			}
-			exec := p.Executable
-			if exec == "" {
-				exec = "cd"
+			progs := "cd"
+			if len(p.Programs) > 0 {
+				progs = strings.Join(p.Programs, "+")
 			}
-			b.WriteString(fmt.Sprintf("%s%s (%s → %s)\n", prefix, p.Name, exec, p.Path))
+			b.WriteString(fmt.Sprintf("%s%s (%s → %s)\n", prefix, p.Name, progs, p.Path))
 		}
 		if len(m.filtered) > maxVisible {
 			b.WriteString(fmt.Sprintf("\nShowing %d/%d\n", maxVisible, len(m.filtered)))
 		}
 	}
 
+	addPrefix := "  "
+	if m.cursor == len(m.filtered) {
+		addPrefix = "▸ "
+	}
+	b.WriteString(fmt.Sprintf("%s+ Add project (current dir)\n", addPrefix))
+
 	if m.searchMode {
 		b.WriteString("\n↑↓/jk navigate · enter select · esc/backspace exit search")
 	} else {
-		b.WriteString("\n↑↓/jk navigate · / search · enter select · esc cancel")
+		b.WriteString("\n↑↓/jk navigate · / search · enter select · q/esc cancel")
 	}
 	return b.String()
 }
 
-func runProjectPicker(projects []Project) (*Project, error) {
+func runProjectPicker(projects []Project) (*Project, bool, error) {
 	m := newProjectPickerModel(projects)
 	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
 	final, err := p.Run()
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	model := final.(projectPickerModel)
-	if model.cancelled || model.selected == nil {
-		return nil, nil
+	if model.cancelled {
+		return nil, false, nil
 	}
-	return model.selected, nil
+	if model.addRequested {
+		return nil, true, nil
+	}
+	return model.selected, false, nil
 }
 
 type binaryPickerModel struct {
@@ -177,7 +196,8 @@ type binaryPickerModel struct {
 	filter       string
 	searchMode   bool
 	showAll      bool
-	selected     string
+	toggled      []string
+	selected     []string
 	cancelled    bool
 	recentExecs  []string
 }
@@ -205,14 +225,40 @@ func (m binaryPickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			m.cancelled = true
 			return m, tea.Quit
-		case "enter":
+		case "q":
+			if m.searchMode {
+				m.filter += "q"
+				m.applyFilter()
+			} else {
+				m.cancelled = true
+				return m, tea.Quit
+			}
+		case " ":
+			if m.searchMode {
+				m.filter += " "
+				m.applyFilter()
+				break
+			}
 			if m.showAll {
 				if len(m.filtered) > 0 {
-					m.selected = m.filtered[m.cursor]
+					m.toggle(m.filtered[m.cursor])
 				}
 			} else {
 				if len(m.filteredApps) > 0 {
-					m.selected = m.filteredApps[m.cursor].Exec
+					m.toggle(m.filteredApps[m.cursor].Exec)
+				}
+			}
+			m.sortRecent()
+		case "enter":
+			if len(m.toggled) > 0 {
+				m.selected = m.toggled
+			} else if m.showAll {
+				if len(m.filtered) > 0 {
+					m.selected = []string{m.filtered[m.cursor]}
+				}
+			} else {
+				if len(m.filteredApps) > 0 {
+					m.selected = []string{m.filteredApps[m.cursor].Exec}
 				}
 			}
 			return m, tea.Quit
@@ -307,16 +353,44 @@ func (m *binaryPickerModel) applyFilter() {
 	m.sortRecent()
 }
 
+func (m *binaryPickerModel) isToggled(name string) bool {
+	for _, t := range m.toggled {
+		if t == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *binaryPickerModel) toggle(name string) {
+	for i, t := range m.toggled {
+		if t == name {
+			m.toggled = append(m.toggled[:i], m.toggled[i+1:]...)
+			return
+		}
+	}
+	m.toggled = append(m.toggled, name)
+}
+
 func (m *binaryPickerModel) sortRecent() {
-	if len(m.recentExecs) == 0 {
-		return
+	toggledRank := make(map[string]int, len(m.toggled))
+	for i, t := range m.toggled {
+		toggledRank[t] = i
 	}
 	recent := make(map[string]int, len(m.recentExecs))
 	for i, e := range m.recentExecs {
 		recent[e] = i
 	}
 	if m.showAll {
-		sort.Slice(m.filtered, func(i, j int) bool {
+		sort.SliceStable(m.filtered, func(i, j int) bool {
+			ti, tokI := toggledRank[m.filtered[i]]
+			tj, tokJ := toggledRank[m.filtered[j]]
+			if tokI != tokJ {
+				return tokI
+			}
+			if tokI {
+				return ti < tj
+			}
 			ri, okI := recent[m.filtered[i]]
 			rj, okJ := recent[m.filtered[j]]
 			if okI != okJ {
@@ -328,7 +402,15 @@ func (m *binaryPickerModel) sortRecent() {
 			return m.filtered[i] < m.filtered[j]
 		})
 	} else {
-		sort.Slice(m.filteredApps, func(i, j int) bool {
+		sort.SliceStable(m.filteredApps, func(i, j int) bool {
+			ti, tokI := toggledRank[m.filteredApps[i].Exec]
+			tj, tokJ := toggledRank[m.filteredApps[j].Exec]
+			if tokI != tokJ {
+				return tokI
+			}
+			if tokI {
+				return ti < tj
+			}
 			ri, okI := recent[m.filteredApps[i].Exec]
 			rj, okJ := recent[m.filteredApps[j].Exec]
 			if okI != okJ {
@@ -371,11 +453,15 @@ func (m binaryPickerModel) View() string {
 				start = max(0, len(m.filtered)-maxVisible)
 			}
 			for i := start; i < start+maxVisible && i < len(m.filtered); i++ {
-				prefix := "  "
+				cursorMark := " "
 				if i == m.cursor {
-					prefix = "▸ "
+					cursorMark = "▸"
 				}
-				b.WriteString(fmt.Sprintf("%s%s\n", prefix, m.filtered[i]))
+				checkMark := " "
+				if m.isToggled(m.filtered[i]) {
+					checkMark = "✓"
+				}
+				b.WriteString(fmt.Sprintf("%s%s %s\n", cursorMark, checkMark, m.filtered[i]))
 			}
 			if len(m.filtered) > maxVisible {
 				b.WriteString(fmt.Sprintf("\nShowing %d/%d\n", maxVisible, len(m.filtered)))
@@ -394,12 +480,16 @@ func (m binaryPickerModel) View() string {
 				start = max(0, len(m.filteredApps)-maxVisible)
 			}
 			for i := start; i < start+maxVisible && i < len(m.filteredApps); i++ {
-				prefix := "  "
+				cursorMark := " "
 				if i == m.cursor {
-					prefix = "▸ "
+					cursorMark = "▸"
 				}
 				a := m.filteredApps[i]
-				b.WriteString(fmt.Sprintf("%s%s (%s)\n", prefix, a.Name, a.Exec))
+				checkMark := " "
+				if m.isToggled(a.Exec) {
+					checkMark = "✓"
+				}
+				b.WriteString(fmt.Sprintf("%s%s %s (%s)\n", cursorMark, checkMark, a.Name, a.Exec))
 			}
 			if len(m.filteredApps) > maxVisible {
 				b.WriteString(fmt.Sprintf("\nShowing %d/%d\n", maxVisible, len(m.filteredApps)))
@@ -416,19 +506,79 @@ func (m binaryPickerModel) View() string {
 		} else {
 			b.WriteString(" · / search · tab: show all")
 		}
-		b.WriteString(" · enter select · esc cancel")
+		b.WriteString(" · space toggle · enter select · q/esc cancel")
 	}
 	return b.String()
 }
 
-func runBinaryPicker(binaries []string) (string, error) {
+func runBinaryPicker(binaries []string) ([]string, error) {
 	m := newBinaryPickerModel(binaries)
+	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
+	final, err := p.Run()
+	if err != nil {
+		return nil, err
+	}
+	model := final.(binaryPickerModel)
+	if model.cancelled {
+		return nil, nil
+	}
+	return model.selected, nil
+}
+
+type programSelectModel struct {
+	programs  []string
+	cursor    int
+	selected  string
+	cancelled bool
+}
+
+func (m programSelectModel) Init() tea.Cmd { return nil }
+
+func (m programSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q", "esc":
+			m.cancelled = true
+			return m, tea.Quit
+		case "enter":
+			m.selected = m.programs[m.cursor]
+			return m, tea.Quit
+		case "down", "j":
+			if m.cursor < len(m.programs)-1 {
+				m.cursor++
+			}
+		case "up", "k":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		}
+	}
+	return m, nil
+}
+
+func (m programSelectModel) View() string {
+	var b strings.Builder
+	b.WriteString("Choose a program to launch with\n\n")
+	for i, p := range m.programs {
+		prefix := "  "
+		if i == m.cursor {
+			prefix = "▸ "
+		}
+		b.WriteString(fmt.Sprintf("%s%s\n", prefix, p))
+	}
+	b.WriteString("\n↑↓/jk navigate · enter select · q/esc cancel")
+	return b.String()
+}
+
+func runProgramSelectPicker(programs []string) (string, error) {
+	m := programSelectModel{programs: programs}
 	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
 	final, err := p.Run()
 	if err != nil {
 		return "", err
 	}
-	model := final.(binaryPickerModel)
+	model := final.(programSelectModel)
 	if model.cancelled {
 		return "", nil
 	}
@@ -444,7 +594,7 @@ type editFormModel struct {
 }
 
 func newEditFormModel(project Project) editFormModel {
-	labels := []string{"Name", "Executable", "Arguments"}
+	labels := []string{"Name", "Programs", "Arguments"}
 	inputs := make([]textinput.Model, 3)
 
 	for i := range inputs {
@@ -455,8 +605,8 @@ func newEditFormModel(project Project) editFormModel {
 	inputs[0].SetValue(project.Name)
 	inputs[0].Focus()
 
-	inputs[1].SetValue(project.Executable)
-	inputs[1].Placeholder = "empty for cd, or type a path"
+	inputs[1].SetValue(strings.Join(project.Programs, " "))
+	inputs[1].Placeholder = "empty for cd, or space-separated programs"
 
 	inputs[2].SetValue(strings.Join(project.Arguments, " "))
 
@@ -481,7 +631,12 @@ func (m editFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			m.done = true
 			m.project.Name = m.inputs[0].Value()
-			m.project.Executable = m.inputs[1].Value()
+			progsStr := strings.TrimSpace(m.inputs[1].Value())
+			if progsStr != "" {
+				m.project.Programs = strings.Fields(progsStr)
+			} else {
+				m.project.Programs = nil
+			}
 			argsStr := strings.TrimSpace(m.inputs[2].Value())
 			if argsStr != "" {
 				m.project.Arguments = strings.Fields(argsStr)

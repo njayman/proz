@@ -12,10 +12,15 @@ func init() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "proz",
+	Use:   "proz [path]",
 	Short: "proz is a free & open source cli tool for managing project directories",
 	Long:  "proz is a free & open source cli tool for managing project directories",
+	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		if len(args) == 1 {
+			addFromPath(args[0])
+			return
+		}
 		listCmd.Run(cmd, args)
 	},
 }

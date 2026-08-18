@@ -38,5 +38,3 @@ func listPathBinaries() []string {
 	sort.Strings(binaries)
 	return binaries
 }
-
-

@@ -3,9 +3,9 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/njayman/proz/utils"
 	"os"
 	"os/exec"
-	"github.com/njayman/proz/utils"
 
 	"github.com/spf13/cobra"
 )
@@ -43,7 +43,7 @@ var listCmd = &cobra.Command{
 			return
 		}
 
-		selected, err := runProjectPicker(projects)
+		selected, addRequested, err := runProjectPicker(projects)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Warning: TUI unavailable, showing text list")
 			for i, p := range projects {
@@ -51,11 +51,44 @@ var listCmd = &cobra.Command{
 			}
 			return
 		}
+		if addRequested {
+			cwd, err := os.Getwd()
+			if err != nil {
+				fmt.Printf("Error getting current directory: %v\n", err)
+				return
+			}
+			addFromPath(cwd)
+			return
+		}
 		if selected == nil {
 			return
 		}
 
-		openProjectDetached(*selected)
+		if len(selected.Programs) == 0 {
+			programs, err := runBinaryPicker(listPathBinaries())
+			if err == nil && len(programs) > 0 {
+				selected.Programs = programs
+				for _, p := range programs {
+					pushRecentExec(p)
+				}
+				updateProjectPrograms(*selected)
+			}
+		}
+
+		program := ""
+		switch len(selected.Programs) {
+		case 0:
+			// no program configured or chosen; just cd
+		case 1:
+			program = selected.Programs[0]
+		default:
+			choice, err := runProgramSelectPicker(selected.Programs)
+			if err == nil {
+				program = choice
+			}
+		}
+
+		openProjectDetached(*selected, program)
 
 		fmt.Println(selected.Path)
 		fmt.Fprintln(os.Stderr, "Tip: use 'proz add'/'proz delete' to manage projects")
@@ -67,15 +100,15 @@ func init() {
 	rootCmd.AddCommand(listCmd)
 }
 
-func openProjectDetached(project Project) {
-	if project.Executable == "" {
+func openProjectDetached(project Project, program string) {
+	if program == "" {
 		return
 	}
 
-	pushRecentExec(project.Executable)
+	pushRecentExec(program)
 
 	os.Chdir(project.Path)
-	cmd := exec.Command(project.Executable, append(project.Arguments, project.Path)...)
+	cmd := exec.Command(program, append(project.Arguments, project.Path)...)
 	if tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0); err == nil {
 		defer tty.Close()
 		cmd.Stdin = tty
@@ -87,6 +120,24 @@ func openProjectDetached(project Project) {
 		cmd.Stderr = os.Stderr
 	}
 	cmd.Run()
+}
+
+func updateProjectPrograms(project Project) {
+	projects, err := loadProjects()
+	if err != nil {
+		return
+	}
+	for i := range projects {
+		if projects[i].Name == project.Name && projects[i].Path == project.Path {
+			projects[i].Programs = project.Programs
+			break
+		}
+	}
+	data, err := json.MarshalIndent(projects, "", "  ")
+	if err != nil {
+		return
+	}
+	os.WriteFile(utils.GetConfigFilePath(), data, 0644)
 }
 
 func loadProjects() ([]Project, error) {

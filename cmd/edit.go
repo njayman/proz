@@ -4,9 +4,9 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"github.com/njayman/proz/utils"
 	"os"
 	"strings"
-	"github.com/njayman/proz/utils"
 
 	"github.com/spf13/cobra"
 )
@@ -42,7 +42,7 @@ var editCmd = &cobra.Command{
 				return
 			}
 		} else {
-			selected, err := runProjectPicker(projects)
+			selected, _, err := runProjectPicker(projects)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "Warning: TUI unavailable")
 				for i, p := range projects {
@@ -104,11 +104,13 @@ func editProjectText(original *Project) *Project {
 		name = original.Name
 	}
 
-	fmt.Printf("Executable (%s): ", original.Executable)
-	exec, _ := reader.ReadString('\n')
-	exec = strings.TrimSpace(exec)
-	if exec == "" {
-		exec = original.Executable
+	currentPrograms := strings.Join(original.Programs, " ")
+	fmt.Printf("Programs (%s): ", currentPrograms)
+	progsStr, _ := reader.ReadString('\n')
+	progsStr = strings.TrimSpace(progsStr)
+	programs := original.Programs
+	if progsStr != "" {
+		programs = strings.Fields(progsStr)
 	}
 
 	currentArgs := strings.Join(original.Arguments, " ")
@@ -123,9 +125,9 @@ func editProjectText(original *Project) *Project {
 	}
 
 	return &Project{
-		Name:       name,
-		Path:       original.Path,
-		Executable: exec,
-		Arguments:  args,
+		Name:      name,
+		Path:      original.Path,
+		Programs:  programs,
+		Arguments: args,
 	}
 }
