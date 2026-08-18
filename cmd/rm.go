@@ -5,7 +5,7 @@ import (
 )
 
 var rmCmd = &cobra.Command{
-	Use:   "rm",
+	Use:   "rm [project-name]",
 	Short: "Alias for delete",
 	Run:   deleteCmd.Run,
 	Args:  deleteCmd.Args,

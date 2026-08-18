@@ -11,7 +11,8 @@ import (
 
 var deleteCmd = &cobra.Command{
 	Use:   "delete [project-name]",
-	Short: "Delete a project from the list",
+	Short: "Delete a project",
+	Long:  "Delete a project. Without a name, opens the project picker to select one.",
 	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		projects, err := loadProjects()

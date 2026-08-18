@@ -6,15 +6,27 @@ import (
 	"github.com/njayman/proz/utils"
 	"os"
 	"os/exec"
+	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
 
-var listJSON bool
+var (
+	listJSON   bool
+	listFilter string
+	listSort   string
+	listLimit  int
+)
 
 var listCmd = &cobra.Command{
 	Use:   "list",
-	Short: "lists the project directory lists",
+	Short: "Open the project picker",
+	Long: "Open the project picker. Selecting a project launches its configured\n" +
+		"program(s) in that directory (prompts if more than one is configured).\n" +
+		"The picker's bottom row adds the current directory as a new project.\n" +
+		"--json prints all projects as JSON instead.\n" +
+		"--filter, --sort, and --limit apply to both the picker and --json output.",
 	Run: func(cmd *cobra.Command, args []string) {
 		utils.EnsureConfigFolderExists()
 
@@ -23,6 +35,12 @@ var listCmd = &cobra.Command{
 		if err != nil {
 			fmt.Printf("Error loading projects: %v\n", err)
 
+			return
+		}
+
+		projects, err = applyListOptions(projects)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return
 		}
 
@@ -37,8 +55,12 @@ var listCmd = &cobra.Command{
 		}
 
 		if len(projects) == 0 {
-			fmt.Println("no projects found")
-			fmt.Println("add more projects using the add command")
+			if listFilter != "" {
+				fmt.Printf("no projects match filter %q\n", listFilter)
+			} else {
+				fmt.Println("no projects found")
+				fmt.Println("add more projects using the add command")
+			}
 
 			return
 		}
@@ -97,7 +119,44 @@ var listCmd = &cobra.Command{
 
 func init() {
 	listCmd.Flags().BoolVar(&listJSON, "json", false, "print projects as JSON instead of opening the picker")
+	listCmd.Flags().StringVar(&listFilter, "filter", "", "keep projects whose name or path contains this substring (case-insensitive)")
+	listCmd.Flags().StringVar(&listSort, "sort", "", "sort projects: name or path")
+	listCmd.Flags().IntVar(&listLimit, "limit", 0, "limit the number of projects returned (0 = no limit)")
 	rootCmd.AddCommand(listCmd)
+}
+
+func applyListOptions(projects []Project) ([]Project, error) {
+	if listFilter != "" {
+		lower := strings.ToLower(listFilter)
+		filtered := make([]Project, 0, len(projects))
+		for _, p := range projects {
+			if strings.Contains(strings.ToLower(p.Name), lower) || strings.Contains(strings.ToLower(p.Path), lower) {
+				filtered = append(filtered, p)
+			}
+		}
+		projects = filtered
+	}
+
+	switch listSort {
+	case "":
+		// keep stored order
+	case "name":
+		sort.SliceStable(projects, func(i, j int) bool {
+			return strings.ToLower(projects[i].Name) < strings.ToLower(projects[j].Name)
+		})
+	case "path":
+		sort.SliceStable(projects, func(i, j int) bool {
+			return strings.ToLower(projects[i].Path) < strings.ToLower(projects[j].Path)
+		})
+	default:
+		return nil, fmt.Errorf("invalid --sort value %q, must be 'name' or 'path'", listSort)
+	}
+
+	if listLimit > 0 && listLimit < len(projects) {
+		projects = projects[:listLimit]
+	}
+
+	return projects, nil
 }
 
 func openProjectDetached(project Project, program string) {

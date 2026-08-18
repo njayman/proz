@@ -1,0 +1,13 @@
+{
+  "name": "proz",
+  "owner": {
+    "name": "Najish Mahmud"
+  },
+  "plugins": [
+    {
+      "name": "proz-agent",
+      "source": "./",
+      "description": "Read and manage proz project directories from a coding agent"
+    }
+  ]
+}

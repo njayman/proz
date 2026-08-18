@@ -1,0 +1,8 @@
+{
+  "name": "proz-agent",
+  "displayName": "proz agent",
+  "description": "Read and manage proz project directories from a coding agent",
+  "author": {
+    "name": "Najish Mahmud"
+  }
+}

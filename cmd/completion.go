@@ -10,6 +10,7 @@ import (
 var completionCmd = &cobra.Command{
 	Use:   "completion [bash|zsh|fish|powershell]",
 	Short: "Generate shell completion script",
+	Long:  "Generate shell completion script. Detects the shell from $SHELL if no argument is given.",
 	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		shell := filepath.Base(os.Getenv("SHELL"))

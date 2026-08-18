@@ -13,8 +13,10 @@ import (
 
 var editCmd = &cobra.Command{
 	Use:   "edit [project-name]",
-	Short: "Edit an existing project",
-	Args:  cobra.MaximumNArgs(1),
+	Short: "Edit a project's name, programs, or arguments",
+	Long: "Edit a project's name, programs, or arguments. Without a name, opens\n" +
+		"the project picker. Falls back to text prompts if the TUI is unavailable.",
+	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		utils.EnsureConfigFolderExists()
 

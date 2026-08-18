@@ -13,9 +13,11 @@ func init() {
 
 var rootCmd = &cobra.Command{
 	Use:   "proz [path]",
-	Short: "proz is a free & open source cli tool for managing project directories",
-	Long:  "proz is a free & open source cli tool for managing project directories",
-	Args:  cobra.MaximumNArgs(1),
+	Short: "Store project directories and launch them with configured programs",
+	Long: "Store project directories and launch them with configured programs.\n\n" +
+		"With no arguments, opens the project picker (same as 'proz list').\n" +
+		"With a path argument, adds that directory as a project (same as 'proz add' but skips cd).",
+	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 1 {
 			addFromPath(args[0])

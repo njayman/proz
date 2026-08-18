@@ -37,8 +37,11 @@ func (p *Project) UnmarshalJSON(data []byte) error {
 
 var addCmd = &cobra.Command{
 	Use:   "add [project-name]",
-	Short: "Add project directory to project lists",
-	Args:  cobra.ExactArgs(1),
+	Short: "Add the current directory as a project",
+	Long: "Add the current directory as a project.\n\n" +
+		"Opens a program picker (desktop apps by default, Tab for all PATH binaries;\n" +
+		"space toggles multiple programs, q/esc skips it). Then prompts for arguments.",
+	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		name := args[0]
 		path, err := os.Getwd()
@@ -87,7 +90,7 @@ func saveProject(project Project) error {
 	binaries := listPathBinaries()
 	programs, err := runBinaryPicker(binaries)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Warning: TUI unavailable — saving without a program")
+		fmt.Fprintln(os.Stderr, "Warning: TUI unavailable, saving without a program")
 		fmt.Fprintln(os.Stderr, "  Use 'proz edit' to set one later")
 	} else if len(programs) > 0 {
 		project.Programs = programs

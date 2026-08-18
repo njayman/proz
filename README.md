@@ -1,6 +1,6 @@
 # proz
 
-Browse and launch projects from a terminal TUI.
+CLI/TUI tool that stores project directories and launches them with configured programs.
 
 ## Install
 
@@ -27,19 +27,19 @@ cd ~/projects/my-app
 proz add my-app
 ```
 
-A program picker opens. Pick one or more editors/programs (code, nvim, claude, etc.) and add optional arguments. The project is saved. You can also skip the picker entirely (press `q`/`esc`) to save a path-only project.
+Opens a program picker. Select one or more programs (code, nvim, claude, etc.), then enter optional arguments. `q`/`esc` skips the picker and saves a path-only project.
 
 ```bash
 proz
 ```
 
-Opens the project picker. Select a project and it launches its program(s) in that directory. A project with no program configured just prints the path — that's also useful for `cd $(proz)`-style shell integration.
+Opens the project picker. Selecting a project launches its configured program(s) in that directory. A project with no program prints the path only, for `cd $(proz)`-style shell integration.
 
 ```bash
 proz ~/projects/my-app
 ```
 
-Adds a project directly from a given path (name defaults to the directory's basename), without needing to `cd` there first.
+Adds `~/projects/my-app` as a project (name = directory basename), without `cd`.
 
 ## Commands
 
@@ -57,25 +57,25 @@ Opens the project picker TUI. Shows all saved projects with their program(s) and
 j/↓ move down · k/↑ move up · / search · enter select · q/esc cancel
 ```
 
-If a project has more than one program configured, selecting it opens a second picker to choose which one to launch with this time.
+A project with 2+ configured programs prompts a second picker to choose which one to launch.
 
-`proz list --json` prints all projects as JSON instead of opening the picker — useful for scripting or feeding into other tools.
+`--json` prints all projects as JSON instead of opening the picker.
 
 ### `proz <path>`
 
-Adds `path` as a project (basename as the name), same picker flow as `proz add`, without changing directory first.
+Adds `path` as a project (name = basename), same flow as `proz add`, without `cd`.
 
 ### `proz add <name>`
 
-Opens the program picker — desktop applications by default, Tab toggles to all PATH binaries. Press space to toggle multiple programs for one project (selected ones pin to the top); Enter with nothing toggled picks just the highlighted one. Recent programs appear first. After selecting, you can add arguments.
+Opens the program picker: desktop applications by default, Tab for all PATH binaries. Space toggles a program for multi-select (toggled items pin to top); Enter with none toggled selects the highlighted item. Recent programs sort first. Prompts for arguments after selection.
 
 ### `proz delete <name>`
 
-Removes a project. Without a name, opens the picker to select one.
+Deletes a project. Without a name, opens the picker to select one.
 
 ### `proz edit <name>`
 
-Opens a TUI form to update the name, programs (space-separated), or arguments. Falls back to text prompts if the TUI is unavailable.
+TUI form to update name, programs (space-separated), or arguments. Falls back to text prompts if the TUI is unavailable.
 
 ### `proz rm <name>`
 
@@ -93,9 +93,7 @@ source <(proz completion)
 
 Prints usage info.
 
-## Program picker
-
-When running `proz add`, a picker shows desktop applications:
+## Desktop app source
 
 | Platform | Source |
 |----------|--------|
@@ -103,11 +101,13 @@ When running `proz add`, a picker shows desktop applications:
 | macOS | `.app` bundles in `/Applications` |
 | Windows | Registry App Paths and Uninstall entries |
 
-Press Tab to switch from desktop apps to all binaries in your PATH. Press space to select multiple programs for one project; press `q`/`esc` to cancel without picking one.
-
 ## Recent programs
 
-The last 4 executables you pick or launch are sorted to the top of the list. Re-running an executable moves it back to position 1. Data is stored in `~/.config/proz/recent.json`.
+The last 4 programs picked or launched sort to the top of the picker. Re-running one moves it back to position 1. Stored in `~/.config/proz/recent.json`.
+
+## Coding agent plugin
+
+`.claude-plugin/plugin.json` + `skills/proz-agent/SKILL.md` in this repo provide a Claude Code skill that shells out to `proz list --json` (with `--filter`/`--sort`/`--limit`) to read the project registry, and `proz <path>`/`proz add` to register projects. No daemon or MCP server; install the plugin from this repo and it invokes the `proz` binary directly.
 
 ## Contributing
 
