@@ -90,7 +90,8 @@ func TestNudgesJSONContract(t *testing.T) {
     "name": "web",
     "path": "/web",
     "last_activity": "2026-10-01T09:00:00Z",
-    "quiet_days": 10
+    "quiet_days": 10,
+    "quiet_seconds": 867600
   }
 ]
 `
@@ -103,6 +104,10 @@ func TestConfigStaleDays(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	if out := run(t, "config", "stale-days"); out != "7\n" {
 		t.Fatalf("default: got %q", out)
+	}
+	rootCmd.SetArgs([]string{"config", "stale-days", "300000"})
+	if rootCmd.Execute() == nil {
+		t.Fatal("a threshold that overflows a duration should be rejected")
 	}
 	run(t, "config", "stale-days", "14")
 	if out := run(t, "config", "stale-days"); out != "14\n" {

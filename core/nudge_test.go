@@ -3,6 +3,7 @@ package core
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -66,12 +67,31 @@ func gitRepo(t *testing.T) (dir string, commit func(at time.Time)) {
 		}
 	}
 	run(nil, "init", "-q")
-	return dir, func(at time.Time) {
-		d := strconv.FormatInt(at.Unix(), 10) + " +0000"
-		run([]string{"GIT_AUTHOR_DATE=" + d, "GIT_COMMITTER_DATE=" + d,
-			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t"},
-			"commit", "-q", "--allow-empty", "-m", "work")
+	return dir, func(at time.Time) { gitCommit(t, dir, "work.txt", at) }
+}
+
+var gitEnv = []string{"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t"}
+
+// git runs git in dir with commit dates pinned to at.
+func git(t *testing.T, dir string, at time.Time, args ...string) {
+	t.Helper()
+	d := strconv.FormatInt(at.Unix(), 10) + " +0000"
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(append(os.Environ(), gitEnv...), "GIT_AUTHOR_DATE="+d, "GIT_COMMITTER_DATE="+d)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
+}
+
+// gitCommit changes file (relative to dir) and commits it, dated at.
+func gitCommit(t *testing.T, dir, file string, at time.Time) {
+	t.Helper()
+	path := filepath.Join(dir, file)
+	os.MkdirAll(filepath.Dir(path), 0755)
+	os.WriteFile(path, []byte(at.String()), 0644)
+	git(t, dir, at, "add", "-A")
+	git(t, dir, at, "commit", "-q", "-m", "work")
 }
 
 func TestCommitIsActivityAndEndsStalePeriod(t *testing.T) {
@@ -122,5 +142,40 @@ func TestStaleThresholdIsConfigurableAndPersists(t *testing.T) {
 	}
 	if err := s.SetStaleThreshold(0); err == nil {
 		t.Fatal("zero threshold should be rejected")
+	}
+}
+
+func TestOnlyTheUsersOwnWorkInTheProjectFolderCounts(t *testing.T) {
+	c := &clock{t0}
+	s := openAt(t, c)
+	repo, commit := gitRepo(t)
+	commit(t0.Add(-day))
+	sub := filepath.Join(repo, "app")
+	gitCommit(t, repo, "app/main.go", t0.Add(-day))
+	s.AddProject(Project{Name: "app", Path: sub})
+
+	gitCommit(t, repo, "other/x.go", t0.Add(9*day)) // elsewhere in the repo
+	os.WriteFile(filepath.Join(sub, "main.go"), []byte("wip"), 0644)
+	git(t, repo, t0.Add(9*day), "stash", "-q")                                    // a stash is not a commit
+	git(t, repo, t0.Add(9*day), "update-ref", "refs/remotes/origin/main", "HEAD") // fetched work is someone else's
+
+	c.t = t0.Add(10 * day)
+	ns := nudgesAt(t, s)
+	if len(ns) != 1 || !ns[0].LastActivity.Equal(t0) {
+		t.Fatalf("want stale since registration, got %+v", ns)
+	}
+}
+
+func TestProjectWithoutFolderIgnoresCurrentDirectoryRepo(t *testing.T) {
+	c := &clock{t0}
+	s := openAt(t, c)
+	repo, commit := gitRepo(t)
+	commit(t0.Add(9 * day))
+	t.Chdir(repo)
+	s.AddProject(Project{Name: "idea"})
+
+	c.t = t0.Add(10 * day)
+	if ns := nudgesAt(t, s); len(ns) != 1 {
+		t.Fatalf("want stale idea, got %+v", ns)
 	}
 }

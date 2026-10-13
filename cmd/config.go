@@ -22,8 +22,8 @@ var staleDaysCmd = &cobra.Command{
 		return withStore(func(s *core.Store) error {
 			if len(args) == 1 {
 				days, err := strconv.Atoi(args[0])
-				if err != nil || days < 1 {
-					return fmt.Errorf("days must be a whole number of at least 1, got %q", args[0])
+				if err != nil || days < 1 || days > 36500 {
+					return fmt.Errorf("days must be a whole number from 1 to 36500, got %q", args[0])
 				}
 				return s.SetStaleThreshold(time.Duration(days) * 24 * time.Hour)
 			}

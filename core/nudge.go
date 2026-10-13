@@ -70,11 +70,17 @@ func (s *Store) Nudges() ([]Nudge, error) {
 	return out, rows.Err()
 }
 
-// lastCommit is the newest commit time on any branch of the repo at dir.
-// ok is false when git is missing, dir is not a repo, or it has no commits.
+// lastCommit is the newest commit on a local branch (or a detached HEAD)
+// that touches dir. Stashes and remote-tracking refs are not the user's
+// work, and in a bigger repo only commits under dir count. ok is false when
+// dir is empty, git is missing, or no such commit exists, so the project
+// falls back to its other signals; a nudge is the safe failure.
 // ponytail: one git process per project per call; cache by HEAD mtime if project counts grow large.
 func lastCommit(dir string) (t time.Time, ok bool) {
-	out, err := exec.Command("git", "-C", dir, "log", "-1", "--all", "--format=%ct").Output()
+	if dir == "" {
+		return t, false
+	}
+	out, err := exec.Command("git", "-C", dir, "log", "-1", "--branches", "HEAD", "--format=%ct", "--", ".").Output()
 	if err != nil {
 		return t, false
 	}

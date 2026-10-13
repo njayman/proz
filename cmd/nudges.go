@@ -32,10 +32,11 @@ var nudgesCmd = &cobra.Command{
 				Path         string `json:"path"`
 				LastActivity string `json:"last_activity"`
 				QuietDays    int    `json:"quiet_days"`
+				QuietSeconds int64  `json:"quiet_seconds"`
 			}
 			out := []nudgeJSON{}
 			for _, n := range nudges {
-				out = append(out, nudgeJSON{n.Name, n.Path, n.LastActivity.UTC().Format(time.RFC3339), quietDays(n)})
+				out = append(out, nudgeJSON{n.Name, n.Path, n.LastActivity.UTC().Format(time.RFC3339), quietDays(n), int64(n.Quiet / time.Second)})
 			}
 			b, err := json.MarshalIndent(out, "", "  ")
 			if err != nil {

@@ -33,7 +33,7 @@ Flags compose, e.g. `proz list --json --filter api --sort name --limit 5`.
 proz nudges --json
 ```
 
-Prints projects that have gone quiet (stale): `name`, `path`, `last_activity` (RFC 3339, UTC), `quiet_days`. `[]` means nothing is stale. Activity is the newest git commit on any branch, or the registration time if that is newer. A project is stale after 7 quiet days by default; `proz config stale-days` prints the threshold and `proz config stale-days <n>` changes it. Only change it when the user asks.
+Prints projects that have gone quiet (stale): `name`, `path`, `last_activity` (RFC 3339, UTC), `quiet_days` (whole days, rounded down), `quiet_seconds`. `[]` means nothing is stale. Activity is the newest commit on a local branch that touches the project folder, or the registration time if that is newer. A project is stale after 7 quiet days by default; `proz config stale-days` prints the threshold and `proz config stale-days <n>` changes it. Only change it when the user asks.
 
 Use this when the user asks what they were working on, what they forgot, or what to pick up next. Report the list; don't act on it.
 
