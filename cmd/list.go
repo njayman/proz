@@ -93,7 +93,9 @@ var listCmd = &cobra.Command{
 				for _, p := range programs {
 					pushRecentExec(p)
 				}
-				updateProjectPrograms(*selected)
+				if err := updateProject(*selected); err != nil {
+					fmt.Fprintf(os.Stderr, "Error saving programs: %v\n", err)
+				}
 			}
 		}
 
@@ -179,44 +181,4 @@ func openProjectDetached(project Project, program string) {
 		cmd.Stderr = os.Stderr
 	}
 	cmd.Run()
-}
-
-func updateProjectPrograms(project Project) {
-	projects, err := loadProjects()
-	if err != nil {
-		return
-	}
-	for i := range projects {
-		if projects[i].Name == project.Name && projects[i].Path == project.Path {
-			projects[i].Programs = project.Programs
-			break
-		}
-	}
-	data, err := json.MarshalIndent(projects, "", "  ")
-	if err != nil {
-		return
-	}
-	os.WriteFile(utils.GetConfigFilePath(), data, 0644)
-}
-
-func loadProjects() ([]Project, error) {
-	dataFile := utils.GetConfigFilePath()
-
-	var projects []Project
-
-	if _, err := os.Stat(dataFile); os.IsNotExist(err) {
-		return projects, nil
-	}
-
-	file, err := os.ReadFile(dataFile)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to read data config file: %w\n", err)
-	}
-
-	if err := json.Unmarshal(file, &projects); err != nil {
-		return nil, fmt.Errorf("failed to parse project data. Data tile may be corrupted or broken. %w", err)
-	}
-
-	return projects, nil
 }

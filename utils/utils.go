@@ -17,10 +17,6 @@ func GetConfigFolder() string {
 	return filepath.Join(configDir, CONFIG_FOLDER_NAME)
 }
 
-func GetConfigFilePath() string {
-	return filepath.Join(GetConfigFolder(), CONFIG_FILE_NAME)
-}
-
 func EnsureConfigFolderExists() {
 	configPath := GetConfigFolder()
 
