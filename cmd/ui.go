@@ -205,7 +205,7 @@ type binaryPickerModel struct {
 
 func newBinaryPickerModel(binaries []string) binaryPickerModel {
 	apps := parseDesktopFiles()
-	recent := loadRecentExecs()
+	recent := loadRecentPrograms()
 	m := binaryPickerModel{
 		desktopApps:  apps,
 		filteredApps: apps,

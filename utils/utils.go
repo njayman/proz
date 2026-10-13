@@ -16,14 +16,3 @@ func GetConfigFolder() string {
 
 	return filepath.Join(configDir, CONFIG_FOLDER_NAME)
 }
-
-func EnsureConfigFolderExists() {
-	configPath := GetConfigFolder()
-
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		if err := os.MkdirAll(configPath, 0775); err != nil {
-			fmt.Println("Error creating config directory. Exiting...")
-			os.Exit(1)
-		}
-	}
-}

@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"time"
 
 	"github.com/njayman/proz/core"
@@ -44,14 +45,36 @@ func removeProject(id int64) error {
 	return withStore(func(s *core.Store) error { return s.RemoveProject(id) })
 }
 
-func pushRecentExec(program string) {
-	withStore(func(s *core.Store) error { return s.PushRecentProgram(program) })
+func pushRecentProgram(program string) {
+	if err := withStore(func(s *core.Store) error { return s.PushRecentProgram(program) }); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not save recent program: %v\n", err)
+	}
 }
 
-func loadRecentExecs() (execs []string) {
-	withStore(func(s *core.Store) (err error) {
-		execs, err = s.RecentPrograms()
+func loadRecentPrograms() (programs []string) {
+	if err := withStore(func(s *core.Store) (err error) {
+		programs, err = s.RecentPrograms()
 		return err
-	})
-	return execs
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not load recent programs: %v\n", err)
+	}
+	return programs
+}
+
+// launch opens project with program, attached to the terminal.
+func launch(project Project, program string) error {
+	var cmd *exec.Cmd
+	if err := withStore(func(s *core.Store) (err error) {
+		cmd, err = s.Launch(project, program)
+		return err
+	}); err != nil || cmd == nil {
+		return err
+	}
+	if tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0); err == nil {
+		defer tty.Close()
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = tty, tty, tty
+	} else {
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	}
+	return cmd.Run()
 }

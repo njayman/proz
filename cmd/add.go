@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/njayman/proz/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -27,7 +26,6 @@ var addCmd = &cobra.Command{
 		}
 
 		project := Project{Name: name, Path: path}
-		utils.EnsureConfigFolderExists()
 		if err := saveProject(project); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return
@@ -54,7 +52,6 @@ func addFromPath(path string) {
 
 	name := filepath.Base(absPath)
 	project := Project{Name: name, Path: absPath}
-	utils.EnsureConfigFolderExists()
 	if err := saveProject(project); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return
@@ -71,7 +68,7 @@ func saveProject(project Project) error {
 	} else if len(programs) > 0 {
 		project.Programs = programs
 		for _, p := range programs {
-			pushRecentExec(p)
+			pushRecentProgram(p)
 		}
 	}
 

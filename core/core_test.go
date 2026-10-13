@@ -197,3 +197,34 @@ func TestRecentJSONImportedOnce(t *testing.T) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 }
+
+func TestCorruptRecentJSONIsSkipped(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "recent.json"), []byte("not json}"), 0644)
+	if got := recent(t, open(t, dir)); len(got) != 0 {
+		t.Fatalf("want none, got %v", got)
+	}
+}
+
+func TestLaunchRecordsProgramAndBuildsCommand(t *testing.T) {
+	s := open(t, t.TempDir())
+	p := Project{Name: "web", Path: "/web", Arguments: []string{"--new-window"}}
+
+	if cmd, err := s.Launch(p, ""); err != nil || cmd != nil {
+		t.Fatalf("no program: want nil command, got %v, %v", cmd, err)
+	}
+	if got := recent(t, s); len(got) != 0 {
+		t.Fatalf("no program must not be recorded, got %v", got)
+	}
+
+	cmd, err := s.Launch(p, "code")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"code", "--new-window", "/web"}; !reflect.DeepEqual(cmd.Args, want) || cmd.Dir != "/web" {
+		t.Fatalf("got args %v dir %q", cmd.Args, cmd.Dir)
+	}
+	if got := recent(t, s); !reflect.DeepEqual(got, []string{"code"}) {
+		t.Fatalf("got %v", got)
+	}
+}

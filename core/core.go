@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"time"
@@ -137,8 +138,8 @@ func (s *Store) importJSON() error {
 	}
 	return s.importOnce("recent.json", func(tx *sql.Tx, data []byte) error {
 		var progs []string
-		if err := json.Unmarshal(data, &progs); err != nil {
-			return err
+		if json.Unmarshal(data, &progs) != nil {
+			return nil // recent programs are a convenience; a corrupt file is not worth blocking every command
 		}
 		for _, prog := range slices.Backward(progs) {
 			if err := pushRecent(tx, prog); err != nil {
@@ -151,10 +152,12 @@ func (s *Store) importJSON() error {
 
 func (s *Store) importOnce(file string, load func(*sql.Tx, []byte) error) error {
 	key := "imported:" + file
-	var done int
-	s.db.QueryRow(`SELECT 1 FROM meta WHERE key = ?`, key).Scan(&done)
-	if done == 1 {
+	err := s.db.QueryRow(`SELECT 1 FROM meta WHERE key = ?`, key).Scan(new(int))
+	if err == nil {
 		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return err
 	}
 	data, err := os.ReadFile(filepath.Join(s.dir, file))
 	if errors.Is(err, os.ErrNotExist) {
@@ -171,7 +174,12 @@ func (s *Store) importOnce(file string, load func(*sql.Tx, []byte) error) error 
 	if err := load(tx, data); err != nil {
 		return fmt.Errorf("%s is corrupt, fix or remove it: %w", file, err)
 	}
-	if _, err := tx.Exec(`INSERT INTO meta (key, value) VALUES (?, '1')`, key); err != nil {
+	// OR IGNORE: a concurrent proz may have imported first; its rows win and ours roll back
+	res, err := tx.Exec(`INSERT OR IGNORE INTO meta (key, value) VALUES (?, '1')`, key)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil || n == 0 {
 		return err
 	}
 	return tx.Commit()
@@ -186,10 +194,8 @@ type execer interface {
 }
 
 func insertProject(db execer, p Project, now time.Time) error {
-	progs, _ := json.Marshal(p.Programs)
-	args, _ := json.Marshal(p.Arguments)
 	_, err := db.Exec(`INSERT INTO projects (workspace_id, name, path, programs, arguments, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		DefaultWorkspace, p.Name, p.Path, string(progs), string(args), now.Unix())
+		DefaultWorkspace, p.Name, p.Path, encode(p.Programs), encode(p.Arguments), now.Unix())
 	return err
 }
 
@@ -197,26 +203,35 @@ var ErrNotFound = errors.New("project not found")
 
 // UpdateProject replaces name, path, programs and arguments of the project with p.ID.
 func (s *Store) UpdateProject(p Project) error {
-	progs, _ := json.Marshal(p.Programs)
-	args, _ := json.Marshal(p.Arguments)
 	res, err := s.db.Exec(`UPDATE projects SET name = ?, path = ?, programs = ?, arguments = ? WHERE id = ? AND workspace_id = ?`,
-		p.Name, p.Path, string(progs), string(args), p.ID, DefaultWorkspace)
-	return affectedOne(res, err)
+		p.Name, p.Path, encode(p.Programs), encode(p.Arguments), p.ID, DefaultWorkspace)
+	return foundOrErr(res, err)
 }
 
 func (s *Store) RemoveProject(id int64) error {
 	res, err := s.db.Exec(`DELETE FROM projects WHERE id = ? AND workspace_id = ?`, id, DefaultWorkspace)
-	return affectedOne(res, err)
+	return foundOrErr(res, err)
 }
 
-func affectedOne(res sql.Result, err error) error {
+// foundOrErr turns a write that touched no row into ErrNotFound.
+func foundOrErr(res sql.Result, err error) error {
 	if err != nil {
 		return err
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// encode stores a string list as JSON text; marshaling []string cannot fail.
+func encode(v []string) string {
+	b, _ := json.Marshal(v)
+	return string(b)
 }
 
 // Projects returns every project in the order they were added.
@@ -233,8 +248,12 @@ func (s *Store) Projects() ([]Project, error) {
 		if err := rows.Scan(&p.ID, &p.Name, &p.Path, &progs, &args); err != nil {
 			return nil, err
 		}
-		json.Unmarshal([]byte(progs), &p.Programs)
-		json.Unmarshal([]byte(args), &p.Arguments)
+		if err := json.Unmarshal([]byte(progs), &p.Programs); err != nil {
+			return nil, fmt.Errorf("project %d programs: %w", p.ID, err)
+		}
+		if err := json.Unmarshal([]byte(args), &p.Arguments); err != nil {
+			return nil, fmt.Errorf("project %d arguments: %w", p.ID, err)
+		}
 		out = append(out, p)
 	}
 	return out, rows.Err()
@@ -276,4 +295,19 @@ func (s *Store) RecentPrograms() ([]string, error) {
 		out = append(out, p)
 	}
 	return out, rows.Err()
+}
+
+// Launch records program as recently used and returns the command that opens
+// p with it; the caller wires stdio and runs it. No program means nothing to
+// launch, so it returns a nil command.
+func (s *Store) Launch(p Project, program string) (*exec.Cmd, error) {
+	if program == "" {
+		return nil, nil
+	}
+	if err := s.PushRecentProgram(program); err != nil {
+		return nil, err
+	}
+	cmd := exec.Command(program, append(slices.Clone(p.Arguments), p.Path)...)
+	cmd.Dir = p.Path
+	return cmd, nil
 }

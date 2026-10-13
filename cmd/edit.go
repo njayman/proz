@@ -3,7 +3,6 @@ package cmd
 import (
 	"bufio"
 	"fmt"
-	"github.com/njayman/proz/utils"
 	"os"
 	"strings"
 
@@ -17,7 +16,6 @@ var editCmd = &cobra.Command{
 		"the project picker. Falls back to text prompts if the TUI is unavailable.",
 	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		utils.EnsureConfigFolderExists()
 
 		projects, err := loadProjects()
 		if err != nil {

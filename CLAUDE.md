@@ -20,8 +20,8 @@ Every feature must pass all of these. If it doesn't, cut it or redesign it.
 - `core/`: domain logic and storage. It must not import UI, network or frontend packages.
 - Frontends call `core` directly and stay thin: `cmd/` (CLI/TUI), and later `tray`, `serve` (HTTP), `mcp`.
 - External frontends (dashboard, mobile, browser addon) talk to `proz serve`, never to the CLI.
-- Current state: the logic still lives in `cmd/` and `utils/`. Move it into `core/` whenever a feature touches it, not as a separate big-bang refactor.
-- Storage today is `os.UserConfigDir()/proz/store.json`. The plan is SQLite (`modernc.org/sqlite`, pure Go) with `workspace_id` on every table.
+- Storage and launch live in `core/`. Anything else still in `cmd/` moves into `core/` when a feature touches it, not as a separate big-bang refactor.
+- Storage is SQLite (`modernc.org/sqlite`, pure Go) at `os.UserConfigDir()/proz/proz.db`, owned by `core`. Every domain table has `workspace_id`; bookkeeping tables like `meta` do not. Migrations are forward-only: append, never edit a shipped one. The old `store.json` and `recent.json` are imported once and left as a backup.
 
 ## Workflow (mandatory order)
 
