@@ -1,6 +1,6 @@
 ---
 name: proz-agent
-description: Read and manage the user's proz project registry (saved project directories and their launch programs). Use when the user asks about their proz projects, wants a project registered, or references a project by name that might be tracked in proz.
+description: Read and manage the user's proz project registry (saved project directories, their launch programs, and which have gone quiet). Use when the user asks about their proz projects, what they forgot or should pick up next, wants a project registered, or references a project by name that might be tracked in proz.
 ---
 
 # proz agent
@@ -26,6 +26,16 @@ proz list --json --limit <n>            # cap result count
 ```
 
 Flags compose, e.g. `proz list --json --filter api --sort name --limit 5`.
+
+## What has the user forgotten?
+
+```bash
+proz nudges --json
+```
+
+Prints projects that have gone quiet (stale): `name`, `path`, `last_activity` (RFC 3339, UTC), `quiet_days`. `[]` means nothing is stale. Activity is the newest git commit on any branch, or the registration time if that is newer. A project is stale after 7 quiet days by default; `proz config stale-days` prints the threshold and `proz config stale-days <n>` changes it. Only change it when the user asks.
+
+Use this when the user asks what they were working on, what they forgot, or what to pick up next. Report the list; don't act on it.
 
 ## Register a project
 

@@ -81,6 +81,14 @@ TUI form to update name, programs (space-separated), or arguments. Falls back to
 
 Alias for `delete`.
 
+### `proz nudges [--json]`
+
+Lists projects that have gone quiet: no git commit (on any branch) and no registration for longer than the stale threshold, 7 days by default.
+
+### `proz config stale-days [days]`
+
+Prints the stale threshold in days, or sets it.
+
 ### `proz completion [bash|zsh|fish|powershell]`
 
 Prints a shell completion script. Detects the shell from `$SHELL` if no argument is given.
