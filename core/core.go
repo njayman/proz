@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -139,8 +140,8 @@ func (s *Store) importJSON() error {
 		if err := json.Unmarshal(data, &progs); err != nil {
 			return err
 		}
-		for i := len(progs) - 1; i >= 0; i-- {
-			if err := pushRecent(tx, progs[i]); err != nil {
+		for _, prog := range slices.Backward(progs) {
+			if err := pushRecent(tx, prog); err != nil {
 				return err
 			}
 		}

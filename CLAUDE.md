@@ -48,7 +48,7 @@ go vet ./...
 
 ## Conventions
 
-- Go 1.24, cobra for commands, bubbletea/bubbles for the TUI.
+- Go 1.27 (`go.mod` is the source of truth; CI reads it), cobra for commands, bubbletea/bubbles for the TUI.
 - Agents rely on `skills/proz-agent/SKILL.md`. Update it in the same change whenever CLI flags or output change.
 - `--json` output is an API contract with agents. Adding fields is fine; renaming or removing fields is a breaking change.
 - Never use em dashes in docs, code comments or CLI output.

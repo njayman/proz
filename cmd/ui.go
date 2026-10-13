@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
@@ -354,12 +355,7 @@ func (m *binaryPickerModel) applyFilter() {
 }
 
 func (m *binaryPickerModel) isToggled(name string) bool {
-	for _, t := range m.toggled {
-		if t == name {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(m.toggled, name)
 }
 
 func (m *binaryPickerModel) toggle(name string) {
