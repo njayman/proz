@@ -109,3 +109,37 @@ func TestNoClaudeDirectoryIsFine(t *testing.T) {
 		t.Fatalf("got %q", st.Note.Lines)
 	}
 }
+
+func TestPromptsThatStartWithMarkupAreKeptButWrappersAreNot(t *testing.T) {
+	for raw, want := range map[string]string{
+		"<div> is not centred, fix it":                    "<div> is not centred, fix it",
+		"<command-name>/compact</command-name>":           "",
+		"<local-command-stdout>ok</local-command-stdout>": "",
+		"<system-reminder>x</system-reminder>":            "",
+		"<bash-input>ls</bash-input>":                     "",
+		"<task-notification>done</task-notification>":     "",
+	} {
+		content, _ := json.Marshal(raw)
+		if got := promptText(content); got != want {
+			t.Errorf("%q: got %q", raw, got)
+		}
+	}
+}
+
+func TestANewerSessionWithoutAPromptKeepsTheEarlierPrompt(t *testing.T) {
+	config := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", config)
+	c := &clock{t0}
+	s := openAt(t, c)
+	project := filepath.Join(t.TempDir(), "web")
+	os.MkdirAll(project, 0755)
+	s.AddProject(Project{Name: "web", Path: project})
+
+	claudeLog(t, config, project, "real", t0.Add(day), prompt("add rate limiting"))
+	claudeLog(t, config, project, "compact", t0.Add(2*day), prompt("<command-name>/compact</command-name>"))
+
+	st := status(t, s)
+	if !st.LastActivity.Equal(t0.Add(2*day)) || st.Note.Lines[len(st.Note.Lines)-1] != "Last prompt: add rate limiting" {
+		t.Fatalf("got %v %q", st.LastActivity, st.Note.Lines)
+	}
+}

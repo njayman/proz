@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -59,7 +57,9 @@ func readClaude(project string) (claudeState, bool) {
 	}
 	var logs []logFile
 	for _, d := range dirs {
-		if !d.IsDir() || !slices.ContainsFunc(prefixes, func(p string) bool { return strings.HasPrefix(d.Name(), p) }) {
+		// the project's folder or a subfolder of it: the name, or the name then '-'
+		match := func(p string) bool { return d.Name() == p || strings.HasPrefix(d.Name(), p+"-") }
+		if !d.IsDir() || !slices.ContainsFunc(prefixes, match) {
 			continue
 		}
 		files, _ := os.ReadDir(filepath.Join(base, d.Name()))
@@ -69,14 +69,28 @@ func readClaude(project string) (claudeState, bool) {
 			}
 		}
 	}
-	// newest first: the first log with a session in the project is the latest
+	// Newest first: the first log with a session in the project is the latest
+	// activity. Its prompt leads, unless it only ran commands like /compact;
+	// then the newest session that has a prompt supplies it.
 	slices.SortFunc(logs, func(a, b logFile) int { return b.mod.Compare(a.mod) })
+	var latest claudeState
+	found := false
 	for _, l := range logs {
-		if st, ok := scanSession(l.path, root); ok {
-			return st, true
+		st, ok := scanSession(l.path, root)
+		if !ok {
+			continue
+		}
+		if !found {
+			latest, found = st, true
+		}
+		if latest.prompt == "" {
+			latest.prompt = st.prompt
+		}
+		if latest.prompt != "" {
+			break
 		}
 	}
-	return claudeState{}, false
+	return latest, found
 }
 
 func scanSession(path, root string) (st claudeState, ok bool) {
@@ -85,38 +99,56 @@ func scanSession(path, root string) (st claudeState, ok bool) {
 		return st, false
 	}
 	defer f.Close()
-	r := bufio.NewReader(f)
-	for {
-		line, err := r.ReadBytes('\n')
-		if bytes.Contains(line, []byte(`"cwd"`)) { // skip big records without one, like API blobs
-			var rec struct {
-				Type        string
-				Cwd         string
-				Timestamp   time.Time
-				IsMeta      bool
-				IsSidechain bool
-				Message     struct{ Content json.RawMessage }
-			}
-			if json.Unmarshal(line, &rec) == nil && rec.Cwd != "" && within(resolve(rec.Cwd), root) {
-				ok = true
-				if rec.Timestamp.After(st.when) {
-					st.when = rec.Timestamp
-				}
-				if rec.Type == "user" && !rec.IsMeta && !rec.IsSidechain {
-					if p := promptText(rec.Message.Content); p != "" {
-						st.prompt = p
-					}
-				}
+	inside := map[string]bool{} // cwd -> within root, resolved once per log
+	record := func(line []byte) {
+		if !bytes.Contains(line, []byte(`"cwd"`)) { // skip big records without one, like API blobs
+			return
+		}
+		var rec struct {
+			Type        string
+			Cwd         string
+			Timestamp   string // parsed separately, so an odd one cannot drop the record
+			IsMeta      bool
+			IsSidechain bool
+			Message     struct{ Content json.RawMessage }
+		}
+		if json.Unmarshal(line, &rec) != nil || rec.Cwd == "" {
+			return
+		}
+		in, seen := inside[rec.Cwd]
+		if !seen {
+			in = within(resolve(rec.Cwd), root)
+			inside[rec.Cwd] = in
+		}
+		if !in {
+			return
+		}
+		ok = true
+		if ts, err := time.Parse(time.RFC3339Nano, rec.Timestamp); err == nil && ts.After(st.when) {
+			st.when = ts
+		}
+		if rec.Type == "user" && !rec.IsMeta && !rec.IsSidechain {
+			if p := promptText(rec.Message.Content); p != "" {
+				st.prompt = p
 			}
 		}
-		if errors.Is(err, io.EOF) || err != nil {
+	}
+	r := bufio.NewReader(f)
+	for {
+		line, err := r.ReadBytes('\n') // ponytail: whole lines in memory; fine at Claude Code's record sizes
+		record(line)
+		if err != nil {
 			return st, ok
 		}
 	}
 }
 
-// promptText is what the user typed, or "" for tool results and the
-// <command>/<system> blocks Claude Code records as user messages.
+// wrapper matches the blocks Claude Code records as user messages but the
+// user did not type: slash commands, their output, shell mode, reminders.
+var wrapper = regexp.MustCompile(`^<(command-|local-command-|system-reminder|bash-|task-notification|user-prompt-submit-hook)`)
+
+// promptText is what the user typed, or "" for tool results and wrappers.
+// A prompt that merely starts with markup, like "<div> is off", is kept.
 func promptText(content json.RawMessage) string {
 	var text string
 	if json.Unmarshal(content, &text) != nil {
@@ -128,12 +160,12 @@ func promptText(content json.RawMessage) string {
 			if p.Type == "tool_result" {
 				return ""
 			}
-			if p.Type == "text" && !strings.HasPrefix(strings.TrimSpace(p.Text), "<") {
+			if p.Type == "text" && !wrapper.MatchString(strings.TrimSpace(p.Text)) {
 				text += " " + p.Text
 			}
 		}
 	}
-	if strings.HasPrefix(strings.TrimSpace(text), "<") {
+	if wrapper.MatchString(strings.TrimSpace(text)) {
 		return ""
 	}
 	r := []rune(strings.Join(strings.Fields(text), " "))
