@@ -91,7 +91,9 @@ func TestNudgesJSONContract(t *testing.T) {
     "path": "/web",
     "last_activity": "2026-10-01T09:00:00Z",
     "quiet_days": 10,
-    "quiet_seconds": 867600
+    "quiet_seconds": 867600,
+    "note": "Quiet for 10 days",
+    "short_note": "Quiet for 10 days"
   }
 ]
 `
@@ -141,5 +143,46 @@ func TestConfigProjectStaleDays(t *testing.T) {
 	}
 	if out := run(t, "config", "stale-days", "--project", "api"); out != "7\n" {
 		t.Fatalf("global must be untouched by failed sets: got %q", out)
+	}
+}
+
+func TestStatusResolvesProjectFromWorkingDirectory(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	project := filepath.Join(dir, "web")
+	os.MkdirAll(filepath.Join(project, "src", "deep"), 0775)
+	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
+	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": "`+project+`"}]`), 0644)
+	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	now = func() time.Time { return t0 }
+	run(t, "list", "--json") // import at t0
+	now = func() time.Time { return t0.Add(3 * 24 * time.Hour) }
+	t.Cleanup(func() { now = time.Now; statusJSON = false })
+
+	if out := run(t, "status", "web"); out != "Quiet for 3 days\n" {
+		t.Fatalf("by name: got %q", out)
+	}
+	t.Chdir(filepath.Join(project, "src", "deep"))
+	if out := run(t, "status"); out != "Quiet for 3 days\n" {
+		t.Fatalf("from subfolder: got %q", out)
+	}
+	want := `{
+  "name": "web",
+  "path": "` + project + `",
+  "last_activity": "2026-10-01T09:00:00Z",
+  "quiet_days": 3,
+  "quiet_seconds": 259200,
+  "note": "Quiet for 3 days",
+  "short_note": "Quiet for 3 days",
+  "stale": false
+}
+`
+	if out := run(t, "status", "--json"); out != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", out, want)
+	}
+	t.Chdir(dir)
+	rootCmd.SetArgs([]string{"status"})
+	if rootCmd.Execute() == nil {
+		t.Fatal("outside any project with no name should fail")
 	}
 }
