@@ -89,3 +89,17 @@ func resolve(path string) string {
 	}
 	return filepath.Clean(path)
 }
+
+// ProjectNamed returns the first project named exactly name.
+func (s *Store) ProjectNamed(name string) (Project, error) {
+	projects, err := s.Projects()
+	if err != nil {
+		return Project{}, err
+	}
+	for _, p := range projects {
+		if p.Name == name {
+			return p, nil
+		}
+	}
+	return Project{}, ErrNotFound
+}

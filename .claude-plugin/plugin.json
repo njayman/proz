@@ -1,8 +1,16 @@
 {
   "name": "proz-agent",
   "displayName": "proz agent",
-  "description": "Read and manage proz project directories from a coding agent",
+  "description": "Track projects, ideas and milestones with proz from a coding agent",
   "author": {
     "name": "Najish Mahmud"
+  },
+  "mcpServers": {
+    "proz": {
+      "command": "proz",
+      "args": [
+        "mcp"
+      ]
+    }
   }
 }

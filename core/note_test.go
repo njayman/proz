@@ -133,3 +133,15 @@ func TestNoteNamesTheBranchOfTheLastCommit(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestProjectNamedFindsTheFirstExactMatch(t *testing.T) {
+	s := open(t, t.TempDir())
+	s.AddProject(Project{Name: "web", Path: "/one"})
+	s.AddProject(Project{Name: "web", Path: "/two"})
+	if p, err := s.ProjectNamed("web"); err != nil || p.Path != "/one" {
+		t.Fatalf("got %+v, %v", p, err)
+	}
+	if _, err := s.ProjectNamed("Web"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("names are exact: got %v", err)
+	}
+}

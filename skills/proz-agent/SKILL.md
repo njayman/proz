@@ -9,6 +9,8 @@ description: Read and manage the user's proz project registry (saved project dir
 
 Requires `proz` on `PATH`. If `proz --help` fails, tell the user to install it (see the proz README) rather than guessing a path.
 
+If your client has the proz MCP tools (`list_projects`, `get_project`, `record_milestone`, `capture_idea`, `list_nudges`; the proz plugin ships them via `proz mcp`), prefer them: they return the same fields as the `--json` commands below (`list_projects` and `list_nudges` wrap their arrays in `projects` and `nudges`), and take a project by `project` (name) or `dir` (an absolute path inside it, such as your working directory), not both. They need `proz` on `PATH` too. Everything else in this skill applies to them the same way.
+
 ## Read the registry
 
 ```bash

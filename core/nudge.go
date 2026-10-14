@@ -101,6 +101,9 @@ func (s *Store) Nudges() ([]Status, error) {
 	return out, nil
 }
 
+// Statuses returns every project's status, in the order they were added.
+func (s *Store) Statuses() ([]Status, error) { return s.statuses(0) }
+
 // Status returns one project's status.
 func (s *Store) Status(id int64) (Status, error) {
 	all, err := s.statuses(id)

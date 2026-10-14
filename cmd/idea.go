@@ -16,11 +16,11 @@ var ideaCmd = &cobra.Command{
 		"attach that folder to it.",
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		text := strings.Join(args, " ")
-		if err := withStore(func(s *core.Store) error { return s.AddIdea(text) }); err != nil {
+		var name string
+		if err := withStore(func(s *core.Store) (err error) { name, err = s.AddIdea(strings.Join(args, " ")); return err }); err != nil {
 			return err
 		}
-		fmt.Printf("Idea captured: %s\n", strings.Join(strings.Fields(text), " "))
+		fmt.Printf("Idea captured: %s\n", name)
 		return nil
 	},
 }

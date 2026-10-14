@@ -18,7 +18,7 @@ Every feature must pass all of these. If it doesn't, cut it or redesign it.
 ## Architecture
 
 - `core/`: domain logic and storage. It must not import UI, network or frontend packages.
-- Frontends call `core` directly and stay thin: `cmd/` (CLI/TUI), and later `tray`, `serve` (HTTP), `mcp`.
+- Frontends call `core` directly and stay thin: `cmd/` (CLI/TUI), `tray/`, `mcpserver/` (MCP over stdio), `notify/`, and later `serve` (HTTP). The JSON shapes agents read live in `contract/`, shared by `--json` and MCP.
 - External frontends (dashboard, mobile, browser addon) talk to `proz serve`, never to the CLI.
 - Storage and launch live in `core/`. Anything else still in `cmd/` moves into `core/` when a feature touches it, not as a separate big-bang refactor.
 - Storage is SQLite (`modernc.org/sqlite`, pure Go) at `os.UserConfigDir()/proz/proz.db`, owned by `core`. Every domain table has `workspace_id`; bookkeeping tables like `meta` do not. Migrations are forward-only: append, never edit a shipped one. The old `store.json` and `recent.json` are imported once and left as a backup.
