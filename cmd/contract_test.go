@@ -188,7 +188,8 @@ func TestStatusResolvesProjectFromWorkingDirectory(t *testing.T) {
   "quiet_seconds": 259200,
   "note": "Quiet for 3 days",
   "short_note": "Quiet for 3 days",
-  "stale": false
+  "stale": false,
+  "milestones": []
 }
 `
 	if out := run(t, "status", "--json"); out != want {
@@ -197,5 +198,54 @@ func TestStatusResolvesProjectFromWorkingDirectory(t *testing.T) {
 	t.Chdir(dir)
 	if execute("status") == nil {
 		t.Fatal("outside any project with no name should fail")
+	}
+}
+
+func TestMilestoneByNameAndFromWorkingDirectory(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	project := filepath.Join(dir, "web")
+	os.MkdirAll(filepath.Join(project, "src"), 0775)
+	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
+	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": "`+project+`"}]`), 0644)
+	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	t.Cleanup(func() { now = time.Now })
+
+	now = func() time.Time { return t0 }
+	run(t, "milestone", "web", "spike done")
+	now = func() time.Time { return t0.Add(24 * time.Hour) }
+	t.Chdir(filepath.Join(project, "src"))
+	run(t, "milestone", "api wired; next: tests")
+	now = func() time.Time { return t0.Add(3 * 24 * time.Hour) }
+
+	if out, want := run(t, "status"), "Quiet for 2 days\nMilestone: api wired; next: tests\n\nMilestones:\n2026-10-02  api wired; next: tests\n2026-10-01  spike done\n"; out != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", out, want)
+	}
+	want := `{
+  "name": "web",
+  "path": "` + project + `",
+  "last_activity": "2026-10-02T09:00:00Z",
+  "quiet_days": 2,
+  "quiet_seconds": 172800,
+  "note": "Quiet for 2 days\nMilestone: api wired; next: tests",
+  "short_note": "Quiet for 2 days; Milestone: api wired; next: tests",
+  "stale": false,
+  "milestones": [
+    {
+      "text": "api wired; next: tests",
+      "at": "2026-10-02T09:00:00Z"
+    },
+    {
+      "text": "spike done",
+      "at": "2026-10-01T09:00:00Z"
+    }
+  ]
+}
+`
+	if out := run(t, "status", "--json"); out != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", out, want)
+	}
+	if execute("milestone", "web", "  ") == nil {
+		t.Fatal("blank milestone should fail")
 	}
 }

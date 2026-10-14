@@ -59,6 +59,13 @@ var migrations = []string{
 	)`,
 	`ALTER TABLE projects ADD COLUMN last_launch INTEGER`,
 	`ALTER TABLE projects ADD COLUMN stale_seconds INTEGER`, // per-project override; NULL uses the global threshold
+	`CREATE TABLE milestones (
+		id INTEGER PRIMARY KEY,
+		workspace_id TEXT NOT NULL DEFAULT 'default',
+		project_id INTEGER NOT NULL,
+		text TEXT NOT NULL,
+		created_at INTEGER NOT NULL
+	)`,
 }
 
 // Open opens (creating if needed) the store in dir. now is the clock every
@@ -217,8 +224,19 @@ func (s *Store) UpdateProject(p Project) error {
 }
 
 func (s *Store) RemoveProject(id int64) error {
-	res, err := s.db.Exec(`DELETE FROM projects WHERE id = ? AND workspace_id = ?`, id, DefaultWorkspace)
-	return foundOrErr(res, err)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`DELETE FROM projects WHERE id = ? AND workspace_id = ?`, id, DefaultWorkspace)
+	if err := foundOrErr(res, err); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM milestones WHERE project_id = ? AND workspace_id = ?`, id, DefaultWorkspace); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // foundOrErr turns a write that touched no row into ErrNotFound.

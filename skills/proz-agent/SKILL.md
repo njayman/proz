@@ -1,6 +1,6 @@
 ---
 name: proz-agent
-description: Read and manage the user's proz project registry (saved project directories, their launch programs, and which have gone quiet). Use when the user asks about their proz projects, what they forgot or should pick up next, wants a project registered, or references a project by name that might be tracked in proz.
+description: Read and manage the user's proz project registry (saved project directories, their launch programs, and which have gone quiet). Use when the user asks about their proz projects, what they forgot or should pick up next, when wrapping up or pausing work in a tracked project, wants a project registered, or references a project by name that might be tracked in proz.
 ---
 
 # proz agent
@@ -44,7 +44,22 @@ proz status --json            # the project containing the current directory (su
 proz status <name> --json
 ```
 
-Same fields as one `nudges` entry, plus `stale` (bool). The note is composed automatically, in fixed order: how long it has been quiet, the last commit message, the branch. Use it when resuming work on a project, before asking the user what they were doing. Without `--json` it prints the note as plain lines.
+Same fields as one `nudges` entry, plus `stale` (bool) and `milestones` (`text`, `at`; newest first, `[]` if none). The note is composed automatically, in fixed order: how long it has been quiet, the latest milestone, the last commit message, the branch. Use it when resuming work on a project, before asking the user what they were doing. Without `--json` it prints the note as plain lines.
+
+## Record a milestone
+
+```bash
+proz milestone "shipped login; next: signup"           # project containing the current directory
+proz milestone <name> "shipped login; next: signup"
+```
+
+A milestone is the line the user reads first when this project resurfaces weeks later, so write it for them: what is done, then what comes next, in one sentence. Record one:
+
+- at the end of a work session in a tracked project, before you hand back;
+- when the user says they are pausing, switching away, or stopping for the day;
+- after finishing a meaningful piece of work (a feature, a fix, a decision).
+
+Skip it for trivial edits, and don't record one per message. If the directory is not a proz project, the command fails; tell the user rather than registering it yourself.
 
 ## Register a project
 
