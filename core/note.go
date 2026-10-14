@@ -65,11 +65,7 @@ func (s *Store) ProjectAt(dir string) (Project, error) {
 		if len(root) <= bestLen {
 			continue
 		}
-		prefix := root
-		if !strings.HasSuffix(prefix, string(filepath.Separator)) {
-			prefix += string(filepath.Separator)
-		}
-		if dir == root || strings.HasPrefix(dir, prefix) {
+		if within(dir, root) {
 			best, bestLen = p, len(root)
 		}
 	}
@@ -77,6 +73,15 @@ func (s *Store) ProjectAt(dir string) (Project, error) {
 		return Project{}, ErrNotFound
 	}
 	return best, nil
+}
+
+// within reports whether dir is root or inside it; both already resolved.
+func within(dir, root string) bool {
+	prefix := root
+	if !strings.HasSuffix(prefix, string(filepath.Separator)) {
+		prefix += string(filepath.Separator)
+	}
+	return dir == root || strings.HasPrefix(dir, prefix)
 }
 
 // resolve cleans path and follows symlinks, so /tmp and /private/tmp (macOS)

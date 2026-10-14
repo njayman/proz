@@ -164,6 +164,10 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 		if hasGit && g.when.After(st.LastActivity) {
 			st.LastActivity = g.when
 		}
+		cl, hasClaude := readClaude(st.Path)
+		if hasClaude && cl.when.After(st.LastActivity) {
+			st.LastActivity = cl.when
+		}
 		st.Quiet = now.Sub(st.LastActivity)
 		threshold := global
 		if r.threshold.Valid {
@@ -204,6 +208,9 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 			if g.branch != "" {
 				st.Note.Lines = append(st.Note.Lines, "Branch: "+g.branch)
 			}
+		}
+		if hasClaude && cl.prompt != "" {
+			st.Note.Lines = append(st.Note.Lines, "Last prompt: "+cl.prompt)
 		}
 		out = append(out, st)
 	}
