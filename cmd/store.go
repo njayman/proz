@@ -12,10 +12,13 @@ import (
 
 type Project = core.Project
 
+// now is the clock core reads; tests replace it.
+var now = time.Now
+
 // withStore opens the core store for one operation. Opening per call keeps
 // the CLI stateless; open cost is a few milliseconds.
 func withStore(fn func(*core.Store) error) error {
-	s, err := core.Open(utils.GetConfigFolder(), time.Now)
+	s, err := core.Open(utils.GetConfigFolder(), now)
 	if err != nil {
 		return err
 	}
@@ -77,4 +80,18 @@ func launch(project Project, program string) error {
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	}
 	return cmd.Run()
+}
+
+// findProject returns the first project named name, the same rule delete and edit use.
+func findProject(name string) (Project, error) {
+	projects, err := loadProjects()
+	if err != nil {
+		return Project{}, err
+	}
+	for _, p := range projects {
+		if p.Name == name {
+			return p, nil
+		}
+	}
+	return Project{}, fmt.Errorf("project %q not found", name)
 }

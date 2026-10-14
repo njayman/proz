@@ -51,6 +51,14 @@ var migrations = []string{
 		workspace_id TEXT NOT NULL DEFAULT 'default',
 		program TEXT NOT NULL
 	)`,
+	`CREATE TABLE settings (
+		workspace_id TEXT NOT NULL DEFAULT 'default',
+		key TEXT NOT NULL,
+		value TEXT NOT NULL,
+		PRIMARY KEY (workspace_id, key)
+	)`,
+	`ALTER TABLE projects ADD COLUMN last_launch INTEGER`,
+	`ALTER TABLE projects ADD COLUMN stale_seconds INTEGER`, // per-project override; NULL uses the global threshold
 }
 
 // Open opens (creating if needed) the store in dir. now is the clock every
@@ -297,10 +305,15 @@ func (s *Store) RecentPrograms() ([]string, error) {
 	return out, rows.Err()
 }
 
-// Launch records program as recently used and returns the command that opens
+// Launch records a launch of p (activity, even with no program) and program
+// as recently used, and returns the command that opens
 // p with it; the caller wires stdio and runs it. No program means nothing to
 // launch, so it returns a nil command.
 func (s *Store) Launch(p Project, program string) (*exec.Cmd, error) {
+	res, err := s.db.Exec(`UPDATE projects SET last_launch = ? WHERE id = ? AND workspace_id = ?`, s.now().Unix(), p.ID, DefaultWorkspace)
+	if err := foundOrErr(res, err); err != nil {
+		return nil, err
+	}
 	if program == "" {
 		return nil, nil
 	}
