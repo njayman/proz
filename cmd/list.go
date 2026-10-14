@@ -83,7 +83,9 @@ var listCmd = &cobra.Command{
 			return
 		}
 		if selected.Path == "" {
-			launch(*selected, "") // opening an idea still counts as activity
+			if err := launch(*selected, ""); err != nil { // opening an idea still counts as activity
+				fmt.Fprintf(os.Stderr, "Warning: could not record the launch: %v\n", err)
+			}
 			fmt.Fprintf(os.Stderr, "'%s' is an idea with no folder yet. Run 'proz add' in its folder to attach one.\n", selected.Name)
 			return
 		}
