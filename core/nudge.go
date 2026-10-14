@@ -130,7 +130,7 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 		recorded  int64 // newest of registration, launch and milestone
 		threshold sql.NullInt64
 		milestone sql.NullString // latest
-		snoozed   sql.NullInt64 // until
+		snoozed   sql.NullInt64  // until
 		snoozedAt sql.NullInt64
 		dropped   sql.NullInt64
 	}
