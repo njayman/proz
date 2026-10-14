@@ -83,11 +83,11 @@ Alias for `delete`.
 
 ### `proz nudges [--json]`
 
-Lists projects that have gone quiet: no registration, no launch through proz, no milestone, no git commit touching the folder (on a local branch) and no Claude Code session in it, for longer than the stale threshold, 7 days by default. Claude Code logs are read from `$CLAUDE_CONFIG_DIR` (or `~/.claude`).
+Lists projects that have gone quiet: no registration, no launch through proz, no milestone, no git commit touching the folder (on a local branch), no uncommitted edit (or, outside git, no file change) and no Claude Code session in it, for longer than the stale threshold, 7 days by default. Claude Code logs are read from `$CLAUDE_CONFIG_DIR` (or `~/.claude`).
 
 ### `proz status [project] [--json]`
 
-Prints where a project left off: how long it has been quiet, the latest milestone, the last commit message and the branch, and the last thing you asked Claude Code there, followed by all milestones. With no name, uses the project containing the current directory. `proz nudges` shows the same note in short form.
+Prints where a project left off: how long it has been quiet, the latest milestone, the last commit message and the branch, how many files are uncommitted, the last thing you asked Claude Code there, and a warning if the folder is gone, followed by all milestones. With no name, uses the project containing the current directory. `proz nudges` shows the same note in short form.
 
 ### `proz idea <text>`
 
