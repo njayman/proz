@@ -58,7 +58,7 @@ proz archived --json           # dropped projects, same fields as nudges
 proz restore [project]         # un-archive and clear any snooze
 ```
 
-With no project name these use the project containing the current directory. For `snooze`, a trailing number is always the days. `resume` opens an interactive program in a terminal; from a shell without one, prefer `proz status --json` to read the note and let the user open it.
+With no project name these use the project containing the current directory. For `snooze` with two arguments, they are the project then the days; with one, an exact project name wins, otherwise a number is the days. A snooze ends early if the project sees new activity: the next quiet stretch nudges as usual. `resume` opens an interactive program in a terminal; from a shell without one, prefer `proz status --json` to read the note and let the user open it.
 
 ## Record a milestone
 

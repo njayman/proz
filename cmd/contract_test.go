@@ -385,3 +385,38 @@ func TestRespondingToNudges(t *testing.T) {
 		t.Fatal("zero-day snooze should fail")
 	}
 }
+
+func TestSnoozeArguments(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	project := filepath.Join(dir, "web")
+	os.MkdirAll(project, 0775)
+	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
+	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": "`+project+`"}, {"name": "2024", "path": "/old"}]`), 0644)
+	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	t.Cleanup(func() { now = time.Now })
+	now = func() time.Time { return t0 }
+	until := func(name string) string {
+		var out struct {
+			SnoozedUntil string `json:"snoozed_until"`
+		}
+		json.Unmarshal([]byte(run(t, "status", name, "--json")), &out)
+		return out.SnoozedUntil
+	}
+	run(t, "list", "--json")
+	now = func() time.Time { return t0.Add(10 * 24 * time.Hour) }
+
+	run(t, "snooze", "2024") // a project named like a number is the project
+	if got := until("2024"); got != "2026-10-18T09:00:00Z" {
+		t.Fatalf("named 2024, default 7 days: got %q", got)
+	}
+	t.Chdir(project)
+	run(t, "snooze", "3") // no such project: days, for the project here
+	if got := until("web"); got != "2026-10-14T09:00:00Z" {
+		t.Fatalf("days for cwd project: got %q", got)
+	}
+	run(t, "snooze", "2024", "1")
+	if got := until("2024"); got != "2026-10-12T09:00:00Z" {
+		t.Fatalf("project then days: got %q", got)
+	}
+}

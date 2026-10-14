@@ -9,12 +9,14 @@ import (
 // the stale period and revives an archived project.
 
 // Snooze hides project id's nudge for d. When d passes and the project is
-// still stale, it nudges again.
+// still stale, it nudges again. New activity ends the snooze with the stale
+// period it was set in, so the next quiet stretch nudges as usual.
 func (s *Store) Snooze(id int64, d time.Duration) error {
 	if d < time.Second {
 		return errors.New("snooze must be positive")
 	}
-	return s.setProject(id, `snoozed_until = ?`, s.now().Add(d).Unix())
+	now := s.now()
+	return s.setProject(id, `snoozed_until = ?, snoozed_at = ?`, now.Add(d).Unix(), now.Unix())
 }
 
 // Drop archives project id: it stops nudging until any new activity, which
@@ -25,7 +27,7 @@ func (s *Store) Drop(id int64) error {
 
 // Restore un-archives project id and clears any snooze.
 func (s *Store) Restore(id int64) error {
-	return s.setProject(id, `dropped_at = NULL, snoozed_until = NULL`)
+	return s.setProject(id, `dropped_at = NULL, snoozed_until = NULL, snoozed_at = NULL`)
 }
 
 // Archived returns dropped projects with no activity since, oldest first.

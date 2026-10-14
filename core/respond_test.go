@@ -117,3 +117,19 @@ func archivedNames(t *testing.T, s *Store) (out []string) {
 	}
 	return out
 }
+
+func TestNewActivityEndsTheSnoozeWithItsStalePeriod(t *testing.T) {
+	c := &clock{t0}
+	s := openAt(t, c)
+	s.AddProject(Project{Name: "app", Path: t.TempDir()})
+	p := onlyProject(t, s)
+
+	c.t = t0.Add(10 * day)
+	s.Snooze(p.ID, 30*day)
+	c.t = t0.Add(12 * day)
+	s.AddMilestone(p.ID, "back on it")
+	c.t = t0.Add(20 * day) // quiet again, a new stale period, still inside the old snooze
+	if ns := nudgesAt(t, s); len(ns) != 1 {
+		t.Fatalf("a new stale period must nudge despite the old snooze, got %+v", ns)
+	}
+}

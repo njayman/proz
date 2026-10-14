@@ -118,7 +118,7 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 	}
 	rows, err := s.db.Query(`SELECT p.id, p.name, p.path,
 			max(p.created_at, coalesce(p.last_launch, 0), coalesce(m.created_at, 0)), p.stale_seconds, m.text,
-			p.snoozed_until, p.dropped_at
+			p.snoozed_until, p.snoozed_at, p.dropped_at
 		FROM projects p
 		LEFT JOIN milestones m ON m.id = (SELECT max(id) FROM milestones WHERE project_id = p.id AND workspace_id = p.workspace_id)
 		WHERE p.workspace_id = ? AND (? = 0 OR p.id = ?) ORDER BY p.id`, DefaultWorkspace, id, id)
@@ -130,13 +130,14 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 		recorded  int64 // newest of registration, launch and milestone
 		threshold sql.NullInt64
 		milestone sql.NullString // latest
-		snoozed   sql.NullInt64
+		snoozed   sql.NullInt64 // until
+		snoozedAt sql.NullInt64
 		dropped   sql.NullInt64
 	}
 	var found []row
 	for rows.Next() {
 		var r row
-		if err := rows.Scan(&r.st.ID, &r.st.Name, &r.st.Path, &r.recorded, &r.threshold, &r.milestone, &r.snoozed, &r.dropped); err != nil {
+		if err := rows.Scan(&r.st.ID, &r.st.Name, &r.st.Path, &r.recorded, &r.threshold, &r.milestone, &r.snoozed, &r.snoozedAt, &r.dropped); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -162,7 +163,7 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 			threshold = time.Duration(r.threshold.Int64) * time.Second
 		}
 		st.Stale = st.Quiet > threshold
-		if r.snoozed.Valid {
+		if r.snoozed.Valid && !st.LastActivity.After(time.Unix(r.snoozedAt.Int64, 0)) {
 			st.SnoozedUntil = time.Unix(r.snoozed.Int64, 0)
 		}
 		switch {

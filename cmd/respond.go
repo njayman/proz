@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 
@@ -31,6 +32,10 @@ var resumeCmd = &cobra.Command{
 			return err
 		}
 		fmt.Println(st.Note.Full())
+		if p.Path == "" {
+			fmt.Fprintf(os.Stderr, "'%s' is an idea with no folder yet. Run 'proz add' in its folder to attach one.\n", p.Name)
+			return launch(p, "") // still counts as picking it back up
+		}
 		return launch(p, chooseProgram(p))
 	},
 }
@@ -39,11 +44,18 @@ var snoozeCmd = &cobra.Command{
 	Use:   "snooze [project] [days]",
 	Short: "Hide a project's nudge for some days (default 7)",
 	Long: "Hide a project's nudge for some days (default 7). If it is still quiet\n" +
-		"when the snooze ends, it nudges again. A trailing number is the days.",
+		"when the snooze ends, it nudges again. With two arguments: project, days.\n" +
+		"With one: a project name if one matches exactly, otherwise days.",
 	Args: cobra.MaximumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		days := 7
-		if n := len(args); n > 0 {
+		n := len(args)
+		if n == 1 {
+			if _, err := findProject(args[0]); err == nil {
+				n = 0 // one argument that names a project is the project, even "2024"
+			}
+		}
+		if n > 0 {
 			if d, err := strconv.Atoi(args[n-1]); err == nil {
 				if d < 1 || d > 36500 {
 					return fmt.Errorf("days must be from 1 to 36500, got %d", d)
