@@ -10,7 +10,7 @@ func GetConfigFolder() string {
 	configDir, err := os.UserConfigDir()
 
 	if err != nil {
-		fmt.Println("Error locating user config directory. Exiting...")
+		fmt.Fprintln(os.Stderr, "Error locating user config directory. Exiting...") // stderr: under 'proz mcp' stdout is the protocol
 		os.Exit(1)
 	}
 

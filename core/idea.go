@@ -9,12 +9,13 @@ import (
 
 // AddIdea captures an idea: a project with no folder yet, named by its text.
 // It resurfaces like any project, from registration, launches and milestones.
-func (s *Store) AddIdea(text string) error {
-	text = strings.Join(strings.Fields(text), " ")
-	if text == "" {
-		return errors.New("idea text is empty")
+// It returns the idea's name: text on one line, spaces collapsed.
+func (s *Store) AddIdea(text string) (string, error) {
+	name := strings.Join(strings.Fields(text), " ")
+	if name == "" {
+		return "", errors.New("idea text is empty")
 	}
-	return s.AddProject(Project{Name: text})
+	return name, s.AddProject(Project{Name: name})
 }
 
 // IdeaFor returns the idea whose name matches the folder dir's name, so

@@ -11,8 +11,8 @@ func TestIdeaIsStaleOnRegistrationLaunchAndMilestoneOnly(t *testing.T) {
 	s := openAt(t, c)
 	repo, commit := gitRepo(t)
 	t.Chdir(repo) // a repo in the working directory must never count for an idea
-	if err := s.AddIdea("  habit tracker app \n"); err != nil {
-		t.Fatal(err)
+	if name, err := s.AddIdea("  habit tracker app \n"); err != nil || name != "habit tracker app" {
+		t.Fatalf("got %q, %v", name, err)
 	}
 	idea := onlyProject(t, s)
 	if idea.Name != "habit tracker app" || idea.Path != "" {
@@ -33,7 +33,7 @@ func TestIdeaIsStaleOnRegistrationLaunchAndMilestoneOnly(t *testing.T) {
 	if ns := nudgesAt(t, s); len(ns) != 0 {
 		t.Fatalf("a launch is activity for an idea too, got %+v", ns)
 	}
-	if err := s.AddIdea(" "); err == nil {
+	if _, err := s.AddIdea(" "); err == nil {
 		t.Fatal("blank idea should fail")
 	}
 }

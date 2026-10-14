@@ -7,7 +7,7 @@
     {
       "name": "proz-agent",
       "source": "./",
-      "description": "Read and manage proz project directories from a coding agent"
+      "description": "Track projects, ideas and milestones with proz from a coding agent"
     }
   ]
 }

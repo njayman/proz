@@ -7,7 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
+	"path/filepath"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/njayman/proz/contract"
@@ -117,8 +117,9 @@ func New(open func() (*core.Store, error), version string) *mcp.Server {
 		Name:        "capture_idea",
 		Description: "Capture an idea the user is not acting on now as a project with no folder, so it resurfaces when it goes quiet.",
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in ideaInput) (*mcp.CallToolResult, named, error) {
-		err := with(func(st *core.Store) error { return st.AddIdea(in.Text) })
-		return nil, named{Name: strings.Join(strings.Fields(in.Text), " ")}, err
+		var out named
+		err := with(func(st *core.Store) (err error) { out.Name, err = st.AddIdea(in.Text); return err })
+		return nil, out, err
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -140,9 +141,14 @@ func resolve(st *core.Store, t Target) (core.Project, error) {
 	var p core.Project
 	var err error
 	switch {
+	case t.Project != "" && t.Dir != "":
+		return p, errors.New("pass project or dir, not both")
 	case t.Project != "":
 		p, err = st.ProjectNamed(t.Project)
 	case t.Dir != "":
+		if !filepath.IsAbs(t.Dir) {
+			return p, fmt.Errorf("dir must be an absolute path, got %q", t.Dir)
+		}
 		p, err = st.ProjectAt(t.Dir)
 	default:
 		return p, errors.New("pass project (a name) or dir (a path inside the project)")

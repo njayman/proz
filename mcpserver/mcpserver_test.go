@@ -102,6 +102,11 @@ func TestToolsEndToEndWithPinnedFields(t *testing.T) {
 	}
 
 	statusFields := []string{"last_activity", "milestones", "name", "note", "path", "quiet_days", "quiet_seconds", "short_note", "stale", "state"}
+	var byDir map[string]any
+	call(t, cs, "get_project", map[string]any{"dir": project}, &byDir)
+	if byDir["name"] != "web" {
+		t.Fatalf("get_project by the folder itself: %v", byDir)
+	}
 	var got map[string]any
 	call(t, cs, "get_project", map[string]any{"project": "web"}, &got)
 	if k := keys(got); !reflect.DeepEqual(k, statusFields) {
@@ -128,11 +133,19 @@ func TestToolsEndToEndWithPinnedFields(t *testing.T) {
 
 func TestProjectArgumentsAreValidated(t *testing.T) {
 	now := t0
-	cs, _ := connect(t, &now)
+	cs, dir := connect(t, &now)
+	project := t.TempDir()
+	s, _ := core.Open(dir, func() time.Time { return t0 })
+	s.AddProject(core.Project{Name: "web", Path: project})
+	s.Close()
+	t.Chdir(project) // so a relative dir would resolve, wrongly, to web
+
 	for name, args := range map[string]map[string]any{
 		"neither":      {},
 		"unknown name": {"project": "nope"},
 		"outside":      {"dir": t.TempDir()},
+		"relative dir": {"dir": "."},                                     // relative to the server's cwd, not the agent's
+		"both":         {"project": "web", "dir": filepath.Dir(project)}, // which one did you mean?
 	} {
 		if res := call(t, cs, "get_project", args, nil); !res.IsError {
 			t.Errorf("%s: want a tool error", name)
