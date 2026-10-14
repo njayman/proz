@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/njayman/proz/core"
@@ -53,7 +54,7 @@ var statusCmd = &cobra.Command{
 		if len(milestones) > 0 {
 			fmt.Println("\nMilestones:")
 			for _, m := range milestones {
-				fmt.Printf("%s  %s\n", m.At.UTC().Format(time.DateOnly), m.Text)
+				fmt.Printf("%s  %s\n", m.At.UTC().Format(time.DateOnly), strings.ReplaceAll(m.Text, "\n", "\n            "))
 			}
 		}
 		return nil

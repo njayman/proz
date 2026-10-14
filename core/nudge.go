@@ -107,7 +107,7 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 	rows, err := s.db.Query(`SELECT p.id, p.name, p.path,
 			max(p.created_at, coalesce(p.last_launch, 0), coalesce(m.created_at, 0)), p.stale_seconds, m.text
 		FROM projects p
-		LEFT JOIN milestones m ON m.id = (SELECT max(id) FROM milestones WHERE project_id = p.id)
+		LEFT JOIN milestones m ON m.id = (SELECT max(id) FROM milestones WHERE project_id = p.id AND workspace_id = p.workspace_id)
 		WHERE p.workspace_id = ? AND (? = 0 OR p.id = ?) ORDER BY p.id`, DefaultWorkspace, id, id)
 	if err != nil {
 		return nil, err

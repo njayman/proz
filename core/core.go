@@ -66,6 +66,7 @@ var migrations = []string{
 		text TEXT NOT NULL,
 		created_at INTEGER NOT NULL
 	)`,
+	`CREATE INDEX milestones_by_project ON milestones (project_id, id)`, // latest milestone per project, on every nudges call
 }
 
 // Open opens (creating if needed) the store in dir. now is the clock every

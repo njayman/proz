@@ -53,6 +53,8 @@ proz milestone "shipped login; next: signup"           # project containing the 
 proz milestone <name> "shipped login; next: signup"
 ```
 
+Pass the text as one quoted argument. With two arguments the first is always the project name.
+
 A milestone is the line the user reads first when this project resurfaces weeks later, so write it for them: what is done, then what comes next, in one sentence. Record one:
 
 - at the end of a work session in a tracked project, before you hand back;

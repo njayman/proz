@@ -248,4 +248,7 @@ func TestMilestoneByNameAndFromWorkingDirectory(t *testing.T) {
 	if execute("milestone", "web", "  ") == nil {
 		t.Fatal("blank milestone should fail")
 	}
+	if execute("milestone", "shipped login", "next: signup") == nil {
+		t.Fatal("two args means project then text; an unknown project must fail, not guess")
+	}
 }
