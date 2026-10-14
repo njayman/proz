@@ -1,6 +1,6 @@
 ---
 name: proz-agent
-description: Read and manage the user's proz project registry (saved project directories, their launch programs, and which have gone quiet). Use when the user asks about their proz projects, what they forgot or should pick up next, when wrapping up or pausing work in a tracked project, wants a project registered, or references a project by name that might be tracked in proz.
+description: Read and manage the user's proz project registry (saved project directories, their launch programs, and which have gone quiet). Use when the user asks about their proz projects, what they forgot or should pick up next, when wrapping up or pausing work in a tracked project, when the user floats an idea to keep, wants a project registered, or references a project by name that might be tracked in proz.
 ---
 
 # proz agent
@@ -62,6 +62,16 @@ A milestone is the line the user reads first when this project resurfaces weeks 
 - after finishing a meaningful piece of work (a feature, a fix, a decision).
 
 Skip it for trivial edits, and don't record one per message. If the directory is not a proz project, the command fails; tell the user rather than registering it yourself.
+
+## Capture an idea
+
+```bash
+proz idea "habit tracker that texts me"
+```
+
+Saves the idea as a project with no folder, so it resurfaces like any project when it goes quiet (registration, launches and milestones count as activity). Capture one when the user floats an idea they are not acting on now ("someday I want to...", "remind me to build..."); record milestones on it by name as it develops. Ideas show `"path": ""` in JSON.
+
+When the user later registers a folder named like the idea (`habit-tracker-that-texts-me`), `proz add` attaches the folder to the idea instead of creating a second project. Without a terminal it attaches by default.
 
 ## Register a project
 

@@ -333,7 +333,7 @@ func (s *Store) Launch(p Project, program string) (*exec.Cmd, error) {
 	if err := foundOrErr(res, err); err != nil {
 		return nil, err
 	}
-	if program == "" {
+	if program == "" || p.Path == "" { // an idea has no folder to open yet
 		return nil, nil
 	}
 	if err := s.PushRecentProgram(program); err != nil {

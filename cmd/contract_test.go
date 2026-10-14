@@ -252,3 +252,31 @@ func TestMilestoneByNameAndFromWorkingDirectory(t *testing.T) {
 		t.Fatal("two args means project then text; an unknown project must fail, not guess")
 	}
 }
+
+func TestIdeaCaptureResurfaces(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	t.Cleanup(func() { now = time.Now })
+	now = func() time.Time { return t0 }
+
+	run(t, "idea", "habit", "tracker", "app")
+	now = func() time.Time { return t0.Add(8 * 24 * time.Hour) }
+	want := `[
+  {
+    "name": "habit tracker app",
+    "path": "",
+    "last_activity": "2026-10-01T09:00:00Z",
+    "quiet_days": 8,
+    "quiet_seconds": 691200,
+    "note": "Quiet for 8 days",
+    "short_note": "Quiet for 8 days"
+  }
+]
+`
+	if out := run(t, "nudges", "--json"); out != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", out, want)
+	}
+	if execute("idea") == nil {
+		t.Fatal("idea with no text should fail")
+	}
+}
