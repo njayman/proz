@@ -39,3 +39,27 @@ func TestNamesWithSpacesAreQuotedInTheCommand(t *testing.T) {
 		t.Fatalf("got %q", got[0].Body)
 	}
 }
+
+func TestCoveredMapsShownMessagesBackToNudges(t *testing.T) {
+	two := []core.Status{nudge("a"), nudge("b")}
+	five := []core.Status{nudge("a"), nudge("b"), nudge("c"), nudge("d"), nudge("e")}
+	for _, tc := range []struct {
+		due         []core.Status
+		shown, want int
+	}{
+		{two, 1, 1}, // one message per nudge
+		{two, 2, 2},
+		{five, 1, 5}, // the summary covers them all
+		{five, 0, 0},
+	} {
+		if got := Covered(tc.due, tc.shown); got != tc.want {
+			t.Errorf("%d due, %d shown: got %d, want %d", len(tc.due), tc.shown, got, tc.want)
+		}
+	}
+}
+
+func TestMarkupIsEscapedForNotifySend(t *testing.T) {
+	if got := escapeMarkup(`fix <b>bold</b> & "x"`); got != `fix &lt;b&gt;bold&lt;/b&gt; &amp; "x"` {
+		t.Fatalf("got %q", got)
+	}
+}

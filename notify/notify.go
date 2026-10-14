@@ -54,15 +54,25 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// Send shows each message as a native notification. Text always travels as
-// an argument or environment variable, never spliced into a script.
-func Send(msgs []Message) error {
-	for _, m := range msgs {
+// Covered is how many of due the first shown messages from Render covered:
+// one each, or all of them for the summary.
+func Covered(due []core.Status, shown int) int {
+	if len(due) > maxSingle {
+		return min(shown, 1) * len(due)
+	}
+	return shown
+}
+
+// Send shows each message as a native notification and returns how many it
+// showed. Text always travels as an argument or environment variable, never
+// spliced into a script.
+func Send(msgs []Message) (int, error) {
+	for i, m := range msgs {
 		if err := command(m).Run(); err != nil {
-			return fmt.Errorf("showing notification: %w", err)
+			return i, fmt.Errorf("showing notification: %w", err)
 		}
 	}
-	return nil
+	return len(msgs), nil
 }
 
 func command(m Message) *exec.Cmd {
@@ -77,7 +87,7 @@ func command(m Message) *exec.Cmd {
 		cmd.Env = append(os.Environ(), "PROZ_TITLE="+m.Title, "PROZ_BODY="+m.Body)
 		return cmd
 	default: // linux, bsd: libnotify
-		return exec.Command("notify-send", "--app-name=proz", "--", m.Title, m.Body)
+		return exec.Command("notify-send", "--app-name=proz", "--", m.Title, escapeMarkup(m.Body))
 	}
 }
 
@@ -90,3 +100,7 @@ $x.Item(1).AppendChild($t.CreateTextNode($env:PROZ_BODY)) | Out-Null
 $id = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
 [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($id).Show([Windows.UI.Notifications.ToastNotification]::new($t))
 `
+
+// escapeMarkup keeps a commit message like "<b>x</b>" literal: notification
+// daemons render a subset of HTML in the body.
+var escapeMarkup = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace

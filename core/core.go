@@ -68,8 +68,9 @@ var migrations = []string{
 	)`,
 	`CREATE INDEX milestones_by_project ON milestones (project_id, id)`, // latest milestone per project, on every nudges call
 	`ALTER TABLE projects ADD COLUMN snoozed_until INTEGER`,
-	`ALTER TABLE projects ADD COLUMN dropped_at INTEGER`,  // archived while no activity is newer
-	`ALTER TABLE projects ADD COLUMN snoozed_at INTEGER`,  // a snooze covers only the stale period it was set in
+	`ALTER TABLE projects ADD COLUMN dropped_at INTEGER`, // archived while no activity is newer
+	`ALTER TABLE projects ADD COLUMN snoozed_at INTEGER`, // a snooze covers only the stale period it was set in
+
 	`ALTER TABLE projects ADD COLUMN notified_at INTEGER`, // last OS notification; one per stale period
 }
 
@@ -79,7 +80,8 @@ func Open(dir string, now func() time.Time) (*Store, error) {
 	if err := os.MkdirAll(dir, 0775); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", filepath.Join(dir, "proz.db"))
+	// busy_timeout: the tray, cron and the CLI are separate processes on one file; wait, don't fail
+	db, err := sql.Open("sqlite", filepath.Join(dir, "proz.db")+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, err
 	}

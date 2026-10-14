@@ -27,12 +27,11 @@ var checkCmd = &cobra.Command{
 			if err != nil || !on {
 				return err
 			}
-			return s.Check(func(due []core.Status) error {
-				if err := send(notify.Render(due)); err != nil {
-					return err
-				}
-				notified = due
-				return nil
+			return s.Check(func(due []core.Status) (int, error) {
+				shown, err := send(notify.Render(due))
+				covered := notify.Covered(due, shown)
+				notified = due[:covered]
+				return covered, err
 			})
 		}); err != nil {
 			return err
@@ -61,7 +60,7 @@ var testNotificationCmd = &cobra.Command{
 	Short: "Show one sample OS notification",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := send([]notify.Message{{
+		if _, err := send([]notify.Message{{
 			Title: "proz notifications work",
 			Body:  "You will see one of these when a project goes quiet.",
 		}}); err != nil {

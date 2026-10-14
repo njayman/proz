@@ -18,7 +18,7 @@ const (
 
 var moduleDefaults = map[Module]bool{
 	ModuleNotifications: true,
-	ModuleTray:          true,
+	ModuleTray:          false, // on once the user enables it
 	ModuleEmail:         false,
 	ModuleBrain:         false,
 }

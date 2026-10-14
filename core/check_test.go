@@ -8,11 +8,14 @@ import (
 // deliveries runs one Check and returns the names it delivered.
 func deliveries(t *testing.T, s *Store, fail error) (got []string) {
 	t.Helper()
-	err := s.Check(func(due []Status) error {
+	err := s.Check(func(due []Status) (int, error) {
+		if fail != nil {
+			return 0, fail
+		}
 		for _, st := range due {
 			got = append(got, st.Name)
 		}
-		return fail
+		return len(due), nil
 	})
 	if !errors.Is(err, fail) {
 		t.Fatalf("check: %v", err)
@@ -90,7 +93,7 @@ func TestNotifiedStateSurvivesReopen(t *testing.T) {
 
 func TestModuleSwitches(t *testing.T) {
 	s := open(t, t.TempDir())
-	for m, want := range map[Module]bool{ModuleNotifications: true, ModuleTray: true, ModuleEmail: false, ModuleBrain: false} {
+	for m, want := range map[Module]bool{ModuleNotifications: true, ModuleTray: false, ModuleEmail: false, ModuleBrain: false} {
 		if on, err := s.ModuleOn(m); err != nil || on != want {
 			t.Errorf("%s default: got %v, %v", m, on, err)
 		}
@@ -103,5 +106,44 @@ func TestModuleSwitches(t *testing.T) {
 	}
 	if err := s.SetModule("telepathy", true); err == nil {
 		t.Error("unknown module should fail")
+	}
+}
+
+func TestPartialDeliveryRetriesOnlyWhatWasNotShown(t *testing.T) {
+	c := &clock{t0}
+	s := openAt(t, c)
+	s.AddProject(Project{Name: "a", Path: t.TempDir()})
+	s.AddProject(Project{Name: "b", Path: t.TempDir()})
+	c.t = t0.Add(8 * day)
+	boom := errors.New("daemon died")
+	err := s.Check(func(due []Status) (int, error) { return 1, boom }) // a shown, b failed
+	if !errors.Is(err, boom) {
+		t.Fatalf("got %v", err)
+	}
+	if got := deliveries(t, s, nil); len(got) != 1 || got[0] != "b" {
+		t.Fatalf("want only b retried, got %v", got)
+	}
+}
+
+func TestConcurrentChecksNotifyOnce(t *testing.T) {
+	dir := t.TempDir()
+	c := &clock{t0}
+	a, _ := Open(dir, c.now) // the tray and a cron job: two processes, one database
+	defer a.Close()
+	b, _ := Open(dir, c.now)
+	defer b.Close()
+	a.AddProject(Project{Name: "app", Path: t.TempDir()})
+	c.t = t0.Add(8 * day)
+
+	var fromB []string
+	err := a.Check(func(due []Status) (int, error) {
+		fromB = deliveries(t, b, nil) // b checks while a is still showing it
+		return len(due), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fromB) != 0 {
+		t.Fatalf("a claimed it first; b must not notify too, got %v", fromB)
 	}
 }

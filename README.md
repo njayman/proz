@@ -113,7 +113,7 @@ On Linux the notification goes through `notify-send`, which needs your desktop s
 
 ### `proz config notifications|tray|email|brain [on|off]`
 
-Shows or switches a module. Notifications and tray are on by default; email and brain stay off until configured.
+Shows or switches a module. Notifications are on by default; the tray, email and brain stay off until you enable or configure them.
 
 ### `proz config stale-days [days] [--project <name>]`
 

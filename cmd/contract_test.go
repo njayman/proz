@@ -430,7 +430,7 @@ func TestCheckDeliversOnceAndRespectsTheSwitch(t *testing.T) {
 	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
 	var shown []notify.Message
 	t.Cleanup(func() { now = time.Now; send = notify.Send })
-	send = func(m []notify.Message) error { shown = append(shown, m...); return nil }
+	send = func(m []notify.Message) (int, error) { shown = append(shown, m...); return len(m), nil }
 	now = func() time.Time { return t0 }
 	run(t, "list", "--json")
 	now = func() time.Time { return t0.Add(8 * 24 * time.Hour) }
