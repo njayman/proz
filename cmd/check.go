@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/njayman/proz/contract"
 	"github.com/njayman/proz/core"
 	"github.com/njayman/proz/notify"
 	"github.com/spf13/cobra"
@@ -26,11 +27,7 @@ var checkCmd = &cobra.Command{
 			return err
 		}
 		if checkJSON {
-			out := []nudgeJSON{}
-			for _, n := range notified {
-				out = append(out, toNudgeJSON(n))
-			}
-			return printJSON(out)
+			return printJSON(contract.Nudges(notified))
 		}
 		for _, n := range notified {
 			fmt.Printf("notified: %s\n", n.Name)

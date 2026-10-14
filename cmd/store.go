@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -82,16 +83,14 @@ func launch(project Project, program string) error {
 	return cmd.Run()
 }
 
-// findProject returns the first project named name, the same rule delete and edit use.
-func findProject(name string) (Project, error) {
-	projects, err := loadProjects()
-	if err != nil {
-		return Project{}, err
+// findProject returns the first project named name.
+func findProject(name string) (p Project, err error) {
+	err = withStore(func(s *core.Store) (err error) {
+		p, err = s.ProjectNamed(name)
+		return err
+	})
+	if errors.Is(err, core.ErrNotFound) {
+		err = fmt.Errorf("project %q not found", name)
 	}
-	for _, p := range projects {
-		if p.Name == name {
-			return p, nil
-		}
-	}
-	return Project{}, fmt.Errorf("project %q not found", name)
+	return p, err
 }

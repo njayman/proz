@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/njayman/proz/contract"
 	"github.com/njayman/proz/core"
 	"github.com/spf13/cobra"
 )
@@ -104,11 +105,7 @@ var archivedCmd = &cobra.Command{
 			return err
 		}
 		if archivedJSON {
-			out := []nudgeJSON{}
-			for _, a := range archived {
-				out = append(out, toNudgeJSON(a))
-			}
-			return printJSON(out)
+			return printJSON(contract.Nudges(archived))
 		}
 		for _, a := range archived {
 			fmt.Printf("%s\t%s\t%s\n", a.Name, a.Note.Short(), a.Path)

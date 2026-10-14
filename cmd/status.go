@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/njayman/proz/contract"
 	"github.com/njayman/proz/core"
 	"github.com/spf13/cobra"
 )
@@ -36,25 +37,7 @@ var statusCmd = &cobra.Command{
 			return err
 		}
 		if statusJSON {
-			type milestoneJSON struct {
-				Text string `json:"text"`
-				At   string `json:"at"`
-			}
-			ms := []milestoneJSON{}
-			for _, m := range milestones {
-				ms = append(ms, milestoneJSON{m.Text, m.At.UTC().Format(time.RFC3339)})
-			}
-			snoozed := ""
-			if st.State == core.StateSnoozed {
-				snoozed = st.SnoozedUntil.UTC().Format(time.RFC3339)
-			}
-			return printJSON(struct {
-				nudgeJSON
-				Stale        bool            `json:"stale"`
-				State        core.State      `json:"state"`
-				SnoozedUntil string          `json:"snoozed_until,omitempty"`
-				Milestones   []milestoneJSON `json:"milestones"`
-			}{toNudgeJSON(st), st.Stale, st.State, snoozed, ms})
+			return printJSON(contract.NewStatus(st, milestones))
 		}
 		fmt.Println(st.Note.Full())
 		if len(milestones) > 0 {

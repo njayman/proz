@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"time"
 
+	"github.com/njayman/proz/contract"
 	"github.com/njayman/proz/core"
 	"github.com/spf13/cobra"
 )
@@ -28,11 +28,7 @@ var nudgesCmd = &cobra.Command{
 			return err
 		}
 		if nudgesJSON {
-			out := []nudgeJSON{}
-			for _, n := range nudges {
-				out = append(out, toNudgeJSON(n))
-			}
-			return printJSON(out)
+			return printJSON(contract.Nudges(nudges))
 		}
 		if len(nudges) == 0 {
 			fmt.Fprintln(os.Stderr, "nothing has gone quiet")
@@ -42,29 +38,6 @@ var nudgesCmd = &cobra.Command{
 		}
 		return nil
 	},
-}
-
-// nudgeJSON is the agent contract for one project in nudges and status output.
-type nudgeJSON struct {
-	Name         string `json:"name"`
-	Path         string `json:"path"`
-	LastActivity string `json:"last_activity"`
-	QuietDays    int    `json:"quiet_days"`
-	QuietSeconds int64  `json:"quiet_seconds"`
-	Note         string `json:"note"`
-	ShortNote    string `json:"short_note"`
-}
-
-func toNudgeJSON(s core.Status) nudgeJSON {
-	return nudgeJSON{
-		Name:         s.Name,
-		Path:         s.Path,
-		LastActivity: s.LastActivity.UTC().Format(time.RFC3339),
-		QuietDays:    int(s.Quiet / (24 * time.Hour)),
-		QuietSeconds: int64(s.Quiet / time.Second),
-		Note:         s.Note.Full(),
-		ShortNote:    s.Note.Short(),
-	}
 }
 
 func printJSON(v any) error {
