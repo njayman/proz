@@ -87,6 +87,10 @@ Saves the idea as a project with no folder, so it resurfaces like any project wh
 
 When the user later registers a folder named like the idea (`habit-tracker-that-texts-me`), `proz add` attaches the folder to the idea instead of creating a second project. Without a terminal it attaches by default.
 
+## Notifications
+
+`proz check` shows the user an OS notification for each project that just went quiet, once per quiet stretch; it runs from cron or the tray, so you rarely need it. `proz check --json` prints the projects it notified (same fields as `nudges`). `proz config notifications|tray|email|brain [on|off]` shows or switches a module; change one only when the user asks. `proz test notification` shows a sample.
+
 ## Register a project
 
 ```bash

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/njayman/proz/notify"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -418,5 +419,45 @@ func TestSnoozeArguments(t *testing.T) {
 	run(t, "snooze", "2024", "1")
 	if got := until("2024"); got != "2026-10-12T09:00:00Z" {
 		t.Fatalf("project then days: got %q", got)
+	}
+}
+
+func TestCheckDeliversOnceAndRespectsTheSwitch(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
+	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": "/web"}]`), 0644)
+	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	var shown []notify.Message
+	t.Cleanup(func() { now = time.Now; send = notify.Send })
+	send = func(m []notify.Message) error { shown = append(shown, m...); return nil }
+	now = func() time.Time { return t0 }
+	run(t, "list", "--json")
+	now = func() time.Time { return t0.Add(8 * 24 * time.Hour) }
+
+	run(t, "config", "notifications", "off")
+	if out := run(t, "config", "notifications"); out != "off\n" {
+		t.Fatalf("switch: got %q", out)
+	}
+	if out := run(t, "check", "--json"); out != "[]\n" || len(shown) != 0 {
+		t.Fatalf("notifications off: got %q, shown %+v", out, shown)
+	}
+
+	run(t, "config", "notifications", "on")
+	var notified []struct{ Name string }
+	json.Unmarshal([]byte(run(t, "check", "--json")), &notified)
+	if len(notified) != 1 || notified[0].Name != "web" || len(shown) != 1 || shown[0].Title != "web went quiet" {
+		t.Fatalf("got %+v, shown %+v", notified, shown)
+	}
+	if out := run(t, "check", "--json"); out != "[]\n" || len(shown) != 1 {
+		t.Fatalf("second check must not repeat: got %q, shown %d", out, len(shown))
+	}
+
+	run(t, "test", "notification")
+	if len(shown) != 2 || !strings.Contains(shown[1].Title, "proz") {
+		t.Fatalf("test notification: shown %+v", shown)
+	}
+	if execute("config", "notifications", "maybe") == nil {
+		t.Fatal("only on or off")
 	}
 }
