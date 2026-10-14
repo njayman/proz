@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -157,6 +158,7 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 	}
 
 	now := s.now()
+	store := resolve(s.dir)
 	out := make([]Status, 0, len(found))
 	for _, r := range found {
 		st := r.st
@@ -168,11 +170,12 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 		missing := false
 		if st.Path != "" {
 			_, err := os.Stat(st.Path)
-			missing = errors.Is(err, os.ErrNotExist)
+			// gone, or a parent replaced by a file; permission denied is not missing
+			missing = errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
 		}
 		var work workState
 		if st.Path != "" && !missing {
-			work = readWork(st.Path)
+			work = readWork(st.Path, now, store)
 		}
 		if work.when.After(st.LastActivity) {
 			st.LastActivity = work.when
