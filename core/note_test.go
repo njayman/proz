@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -94,5 +95,41 @@ func TestProjectAtResolvesTheNearestEnclosingProject(t *testing.T) {
 	}
 	if _, err := s.ProjectAt(root + "/webx"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("sibling with shared prefix must not match, got %v", err)
+	}
+}
+
+func TestProjectAtSeesThroughSymlinksAndRoot(t *testing.T) {
+	s := open(t, t.TempDir())
+	real := filepath.Join(t.TempDir(), "real")
+	os.MkdirAll(filepath.Join(real, "src"), 0755)
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip("symlinks unsupported:", err)
+	}
+	s.AddProject(Project{Name: "linked", Path: link})
+	if p, err := s.ProjectAt(filepath.Join(real, "src")); err != nil || p.Name != "linked" {
+		t.Fatalf("real path inside a project registered by symlink: got %q, %v", p.Name, err)
+	}
+
+	s.AddProject(Project{Name: "everything", Path: "/"})
+	if p, err := s.ProjectAt(os.TempDir()); err != nil || p.Name != "everything" {
+		t.Fatalf("project at / should contain everything: got %q, %v", p.Name, err)
+	}
+}
+
+func TestNoteNamesTheBranchOfTheLastCommit(t *testing.T) {
+	c := &clock{t0}
+	s := openAt(t, c)
+	dir, commit := gitRepo(t)
+	commit(t0.Add(-day))
+	git(t, dir, t0, "branch", "-M", "main")
+	git(t, dir, t0, "checkout", "-q", "-b", "spike")
+	gitCommit(t, dir, "spike.go", t0.Add(day))
+	git(t, dir, t0, "checkout", "-q", "main") // left the newest work on another branch
+	s.AddProject(Project{Name: "app", Path: dir})
+
+	c.t = t0.Add(2 * day)
+	if got := status(t, s).Note.Lines[2]; got != "Branch: spike" {
+		t.Fatalf("got %q", got)
 	}
 }

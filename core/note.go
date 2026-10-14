@@ -50,24 +50,42 @@ func plural(format string, n int) string {
 // ProjectAt returns the project whose folder is dir or the nearest folder
 // above it, so agents and the CLI can work from anywhere inside a project.
 func (s *Store) ProjectAt(dir string) (Project, error) {
-	dir = filepath.Clean(dir)
+	dir = resolve(dir)
 	projects, err := s.Projects()
 	if err != nil {
 		return Project{}, err
 	}
 	var best Project
-	bestLen := 0
+	bestLen := -1
 	for _, p := range projects {
-		root := filepath.Clean(p.Path)
-		if p.Path == "" || len(root) <= bestLen {
+		if p.Path == "" {
 			continue
 		}
-		if dir == root || strings.HasPrefix(dir, root+string(filepath.Separator)) {
+		root := resolve(p.Path)
+		if len(root) <= bestLen {
+			continue
+		}
+		prefix := root
+		if !strings.HasSuffix(prefix, string(filepath.Separator)) {
+			prefix += string(filepath.Separator)
+		}
+		if dir == root || strings.HasPrefix(dir, prefix) {
 			best, bestLen = p, len(root)
 		}
 	}
-	if best.ID == 0 {
+	if bestLen < 0 {
 		return Project{}, ErrNotFound
 	}
 	return best, nil
+}
+
+// resolve cleans path and follows symlinks, so /tmp and /private/tmp (macOS)
+// or a symlinked home compare equal. A path that cannot be resolved, such as
+// a deleted folder, is compared as written.
+// ponytail: case-sensitive compare; case-insensitive filesystems (macOS, Windows) need os.SameFile on the ancestors if users hit it.
+func resolve(path string) string {
+	if r, err := filepath.EvalSymlinks(path); err == nil {
+		return r
+	}
+	return filepath.Clean(path)
 }

@@ -6,7 +6,25 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
+
+// execute runs proz with args from a clean flag state: cobra keeps flag
+// values between Execute calls in one process.
+func execute(args ...string) error {
+	var reset func(*cobra.Command)
+	reset = func(c *cobra.Command) {
+		c.Flags().VisitAll(func(f *pflag.Flag) { f.Value.Set(f.DefValue); f.Changed = false })
+		for _, sub := range c.Commands() {
+			reset(sub)
+		}
+	}
+	reset(rootCmd)
+	rootCmd.SetArgs(args)
+	return rootCmd.Execute()
+}
 
 // run executes proz with args and returns what it printed to stdout.
 func run(t *testing.T, args ...string) string {
@@ -14,8 +32,7 @@ func run(t *testing.T, args ...string) string {
 	r, w, _ := os.Pipe()
 	stdout := os.Stdout
 	os.Stdout = w
-	rootCmd.SetArgs(args)
-	err := rootCmd.Execute()
+	err := execute(args...)
 	os.Stdout = stdout
 	w.Close()
 	out, _ := io.ReadAll(r)
@@ -107,8 +124,7 @@ func TestConfigStaleDays(t *testing.T) {
 	if out := run(t, "config", "stale-days"); out != "7\n" {
 		t.Fatalf("default: got %q", out)
 	}
-	rootCmd.SetArgs([]string{"config", "stale-days", "300000"})
-	if rootCmd.Execute() == nil {
+	if execute("config", "stale-days", "300000") == nil {
 		t.Fatal("a threshold that overflows a duration should be rejected")
 	}
 	run(t, "config", "stale-days", "14")
@@ -118,7 +134,6 @@ func TestConfigStaleDays(t *testing.T) {
 }
 
 func TestConfigProjectStaleDays(t *testing.T) {
-	t.Cleanup(func() { staleProject = "" }) // cobra keeps flag values between Execute calls
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
@@ -136,8 +151,7 @@ func TestConfigProjectStaleDays(t *testing.T) {
 		t.Fatalf("cleared: got %q", out)
 	}
 	for _, name := range []string{"nope", ""} {
-		rootCmd.SetArgs([]string{"config", "stale-days", "5", "--project", name})
-		if rootCmd.Execute() == nil {
+		if execute("config", "stale-days", "5", "--project", name) == nil {
 			t.Fatalf("project %q should fail", name)
 		}
 	}
@@ -157,7 +171,7 @@ func TestStatusResolvesProjectFromWorkingDirectory(t *testing.T) {
 	now = func() time.Time { return t0 }
 	run(t, "list", "--json") // import at t0
 	now = func() time.Time { return t0.Add(3 * 24 * time.Hour) }
-	t.Cleanup(func() { now = time.Now; statusJSON = false })
+	t.Cleanup(func() { now = time.Now })
 
 	if out := run(t, "status", "web"); out != "Quiet for 3 days\n" {
 		t.Fatalf("by name: got %q", out)
@@ -181,8 +195,7 @@ func TestStatusResolvesProjectFromWorkingDirectory(t *testing.T) {
 		t.Fatalf("got:\n%s\nwant:\n%s", out, want)
 	}
 	t.Chdir(dir)
-	rootCmd.SetArgs([]string{"status"})
-	if rootCmd.Execute() == nil {
+	if execute("status") == nil {
 		t.Fatal("outside any project with no name should fail")
 	}
 }

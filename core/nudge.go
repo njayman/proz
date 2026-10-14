@@ -164,27 +164,33 @@ type gitState struct {
 }
 
 // readGit reads the newest commit on a local branch (or a detached HEAD)
-// that touches dir, and the current branch. Stashes and remote-tracking refs
+// that touches dir, and the branch it is on. Stashes and remote-tracking refs
 // are not the user's work, and in a bigger repo only commits under dir count.
 // ok is false when dir is empty, git is missing, or no such commit exists, so
 // the project falls back to its other signals; a nudge is the safe failure.
-// ponytail: two git processes per project per call; cache by HEAD mtime if project counts grow large.
+// ponytail: one or two git processes per project per call; cache by HEAD mtime if project counts grow large.
 func readGit(dir string) (g gitState, ok bool) {
 	if dir == "" {
 		return g, false
 	}
-	out, err := exec.Command("git", "-C", dir, "log", "-1", "--branches", "HEAD", "--format=%ct%x00%s", "--", ".").Output()
+	// %S is the ref the commit was reached from, so the branch matches the commit.
+	out, err := exec.Command("git", "-C", dir, "log", "-1", "--source", "--branches", "HEAD", "--format=%ct%x00%S%x00%s", "--", ".").Output()
 	if err != nil {
 		return g, false
 	}
-	sec, subject, found := strings.Cut(strings.TrimSpace(string(out)), "\x00")
-	n, err := strconv.ParseInt(sec, 10, 64)
-	if !found || err != nil {
+	f := strings.SplitN(strings.TrimRight(string(out), "\n"), "\x00", 3)
+	if len(f) != 3 {
 		return g, false
 	}
-	g.when, g.subject = time.Unix(n, 0), subject
-	if out, err := exec.Command("git", "-C", dir, "branch", "--show-current").Output(); err == nil {
-		g.branch = strings.TrimSpace(string(out))
+	n, err := strconv.ParseInt(f[0], 10, 64)
+	if err != nil {
+		return g, false
+	}
+	g.when, g.subject = time.Unix(n, 0), f[2]
+	if f[1] != "HEAD" {
+		g.branch = strings.TrimPrefix(f[1], "refs/heads/") // git prints either form
+	} else if out, err := exec.Command("git", "-C", dir, "branch", "--show-current").Output(); err == nil {
+		g.branch = strings.TrimSpace(string(out)) // reached from HEAD: the checked-out branch, empty if detached
 	}
 	return g, true
 }
