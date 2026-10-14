@@ -101,9 +101,15 @@ Records a progress checkpoint, usually written by an agent at the end of a sessi
 
 The answers to a nudge. `resume` prints the left-off note and opens the project's program. `snooze [project] [days]` hides the nudge for N days (7 by default); it comes back if the project is still quiet. `drop` archives the project until any new activity revives it, and `restore` brings it back by hand. `proz archived [--json]` lists dropped projects.
 
+### `proz tray`
+
+Runs in the background with a tray icon: a ring, with a red dot while any project is quiet. It checks every 15 minutes and notifies once per quiet stretch, like `proz check`. Its menu lists each quiet project with its short note; each has Resume (opens its first program, no terminal), Snooze 7 days and Drop. `proz tray autostart on|off` starts it at login (an autostart entry on Linux, a LaunchAgent on macOS, a registry Run value on Windows).
+
+Release binaries include the tray. Building yourself: `go build -tags tray .` (on macOS this needs cgo). A build without the tag works fully, minus the tray. On GNOME the icon needs the AppIndicator extension.
+
 ### `proz check [--json]`
 
-Runs one check: shows an OS notification for each project that just went quiet, at most once per quiet stretch (a snooze ending counts as a new one). Four or more at once collapse into one summary. Safe to run often; it never repeats itself. Without the tray, schedule it, for example with cron:
+Runs one check: shows an OS notification for each project that just went quiet, at most once per quiet stretch (a snooze ending counts as a new one). Four or more at once collapse into one summary. Safe to run often; it never repeats itself. Without the tray, schedule it instead, for example with cron:
 
 ```cron
 */30 * * * * proz check

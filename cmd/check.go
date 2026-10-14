@@ -21,19 +21,8 @@ var checkCmd = &cobra.Command{
 		"often, from cron or a scheduler; it never repeats a notification.",
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		var notified []core.Status
-		if err := withStore(func(s *core.Store) error {
-			on, err := s.ModuleOn(core.ModuleNotifications)
-			if err != nil || !on {
-				return err
-			}
-			return s.Check(func(due []core.Status) (int, error) {
-				shown, err := send(notify.Render(due))
-				covered := notify.Covered(due, shown)
-				notified = due[:covered]
-				return covered, err
-			})
-		}); err != nil {
+		notified, err := runCheck()
+		if err != nil {
 			return err
 		}
 		if checkJSON {
@@ -48,6 +37,24 @@ var checkCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+// runCheck notifies about projects that just went quiet, if notifications
+// are on, and returns those it notified. The tray calls it on its interval.
+func runCheck() (notified []core.Status, err error) {
+	err = withStore(func(s *core.Store) error {
+		on, err := s.ModuleOn(core.ModuleNotifications)
+		if err != nil || !on {
+			return err
+		}
+		return s.Check(func(due []core.Status) (int, error) {
+			shown, err := send(notify.Render(due))
+			covered := notify.Covered(due, shown)
+			notified = due[:covered]
+			return covered, err
+		})
+	})
+	return notified, err
 }
 
 var testCmd = &cobra.Command{

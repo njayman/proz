@@ -8,7 +8,8 @@ on:
 jobs:
   build:
     permissions: write-all
-    runs-on: ubuntu-latest
+    # the tray needs cgo on macOS only, so darwin builds on a macOS runner
+    runs-on: ${{ matrix.goos == 'darwin' && 'macos-latest' || 'ubuntu-latest' }}
 
     strategy:
       matrix:
@@ -53,12 +54,13 @@ jobs:
       - name: Build Go binary
         run: |
           mkdir -p dist
-          go build -trimpath -ldflags="-s -w" -o dist/${{ env.BINARY_NAME }} .
+          go build -trimpath -tags tray -ldflags="-s -w" -o dist/${{ env.BINARY_NAME }} .
           ls -lh dist/
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           GOARM: ${{ matrix.goarm }}
+          CGO_ENABLED: ${{ matrix.goos == 'darwin' && '1' || '0' }}
 
       - name: Package Binary
         run: |
