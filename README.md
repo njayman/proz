@@ -89,6 +89,10 @@ Lists projects that have gone quiet: no registration, no launch through proz, an
 
 Prints where a project left off: how long it has been quiet, the latest milestone, the last commit message and the branch, followed by all milestones. With no name, uses the project containing the current directory. `proz nudges` shows the same note in short form.
 
+### `proz idea <text>`
+
+Captures an idea as a project with no folder yet, so it resurfaces too. Registering a folder named like the idea later (`proz add`, `proz <path>`) offers to attach the folder to it.
+
 ### `proz milestone [project] <text>`
 
 Records a progress checkpoint, usually written by an agent at the end of a session ("shipped login; next: signup"). The latest milestone leads the left-off note and counts as activity. `proz status` lists them all.

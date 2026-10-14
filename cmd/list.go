@@ -82,6 +82,13 @@ var listCmd = &cobra.Command{
 		if selected == nil {
 			return
 		}
+		if selected.Path == "" {
+			if err := launch(*selected, ""); err != nil { // opening an idea still counts as activity
+				fmt.Fprintf(os.Stderr, "Warning: could not record the launch: %v\n", err)
+			}
+			fmt.Fprintf(os.Stderr, "'%s' is an idea with no folder yet. Run 'proz add' in its folder to attach one.\n", selected.Name)
+			return
+		}
 
 		if len(selected.Programs) == 0 {
 			programs, err := runBinaryPicker(listPathBinaries())

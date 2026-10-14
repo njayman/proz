@@ -1,9 +1,12 @@
 package cmd
 
 import (
+	"bufio"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -250,5 +253,70 @@ func TestMilestoneByNameAndFromWorkingDirectory(t *testing.T) {
 	}
 	if execute("milestone", "shipped login", "next: signup") == nil {
 		t.Fatal("two args means project then text; an unknown project must fail, not guess")
+	}
+}
+
+func TestIdeaCaptureResurfaces(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	t.Cleanup(func() { now = time.Now })
+	now = func() time.Time { return t0 }
+
+	run(t, "idea", "habit", "tracker", "app")
+	now = func() time.Time { return t0.Add(8 * 24 * time.Hour) }
+	want := `[
+  {
+    "name": "habit tracker app",
+    "path": "",
+    "last_activity": "2026-10-01T09:00:00Z",
+    "quiet_days": 8,
+    "quiet_seconds": 691200,
+    "note": "Quiet for 8 days",
+    "short_note": "Quiet for 8 days"
+  }
+]
+`
+	if out := run(t, "nudges", "--json"); out != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", out, want)
+	}
+	if execute("idea") == nil {
+		t.Fatal("idea with no text should fail")
+	}
+}
+
+func TestAddOffersToAttachAFolderToAMatchingIdea(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Cleanup(func() { stdin = bufio.NewReader(os.Stdin) })
+	folder := func(name string) string {
+		p := filepath.Join(dir, name, "habit-tracker")
+		os.MkdirAll(p, 0775)
+		return p
+	}
+	type entry struct{ Name, Path string }
+	list := func() (out []entry) {
+		json.Unmarshal([]byte(run(t, "list", "--json")), &out)
+		return out
+	}
+
+	run(t, "idea", "Habit Tracker")
+	run(t, "milestone", "Habit Tracker", "sketched data model")
+
+	stdin = bufio.NewReader(strings.NewReader("n\n\n")) // declined: a separate project
+	declined := folder("a")
+	run(t, declined)
+	if got := list(); len(got) != 2 || got[0].Path != "" || got[1].Path != declined {
+		t.Fatalf("decline: got %+v", got)
+	}
+
+	stdin = bufio.NewReader(strings.NewReader("")) // no answer, as for an agent: attach
+	attached := folder("b")
+	run(t, attached)
+	got := list()
+	if len(got) != 2 || got[0] != (entry{"Habit Tracker", attached}) {
+		t.Fatalf("attach: got %+v", got)
+	}
+	if out := run(t, "status", "Habit Tracker"); !strings.Contains(out, "sketched data model") {
+		t.Fatalf("attached idea must keep its milestones: %q", out)
 	}
 }

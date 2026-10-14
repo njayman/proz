@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/njayman/proz/core"
 	"github.com/spf13/cobra"
 )
 
@@ -26,11 +28,10 @@ var addCmd = &cobra.Command{
 		}
 
 		project := Project{Name: name, Path: path}
-		if err := saveProject(project); err != nil {
+		if err := register(project); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return
 		}
-		fmt.Printf("Project '%s' added successfully!\n", name)
 	},
 }
 
@@ -52,11 +53,10 @@ func addFromPath(path string) {
 
 	name := filepath.Base(absPath)
 	project := Project{Name: name, Path: absPath}
-	if err := saveProject(project); err != nil {
+	if err := register(project); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return
 	}
-	fmt.Printf("Project '%s' added successfully!\n", name)
 }
 
 func saveProject(project Project) error {
@@ -72,9 +72,8 @@ func saveProject(project Project) error {
 		}
 	}
 
-	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("Arguments (space-separated, or press Enter for none): ")
-	argsStr, err := reader.ReadString('\n')
+	argsStr, err := stdin.ReadString('\n')
 	if err == nil {
 		argsStr = strings.TrimSpace(argsStr)
 		if argsStr != "" {
@@ -82,6 +81,41 @@ func saveProject(project Project) error {
 		}
 	}
 
+	if project.ID != 0 {
+		return updateProject(project)
+	}
 	appendProject(project)
+	return nil
+}
+
+// stdin is shared so successive prompts don't lose each other's buffered input.
+var stdin = bufio.NewReader(os.Stdin)
+
+// register saves project, or, if its folder is named like an existing idea
+// and the user agrees, gives that idea the folder so one idea never becomes
+// two projects. With no answer (no terminal, as for agents) it attaches.
+func register(project Project) error {
+	var idea Project
+	if err := withStore(func(s *core.Store) (err error) {
+		idea, err = s.IdeaFor(project.Path)
+		return err
+	}); err == nil {
+		fmt.Printf("Attach this folder to the idea %q instead of adding a new project? [Y/n] ", idea.Name)
+		answer, _ := stdin.ReadString('\n')
+		if a := strings.ToLower(strings.TrimSpace(answer)); a == "" || a == "y" || a == "yes" {
+			idea.Path = project.Path
+			project = idea
+		}
+	} else if !errors.Is(err, core.ErrNotFound) {
+		return err
+	}
+	if err := saveProject(project); err != nil {
+		return err
+	}
+	if project.ID != 0 {
+		fmt.Printf("Folder attached to the idea '%s'.\n", project.Name)
+	} else {
+		fmt.Printf("Project '%s' added successfully!\n", project.Name)
+	}
 	return nil
 }
