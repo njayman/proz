@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/njayman/proz/autostart"
 	"github.com/njayman/proz/core"
 	"github.com/spf13/cobra"
 )
@@ -73,6 +74,12 @@ func moduleCmd(m core.Module) *cobra.Command {
 				if len(args) == 1 {
 					if args[0] != "on" && args[0] != "off" {
 						return fmt.Errorf("%s: want on or off, got %q", m, args[0])
+					}
+					if m == core.ModuleTray && args[0] == "off" {
+						// off means off: no tray at the next login either; a running one quits on its next refresh
+						if err := autostart.Remove(); err != nil {
+							return err
+						}
 					}
 					return s.SetModule(m, args[0] == "on")
 				}

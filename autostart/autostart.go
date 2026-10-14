@@ -43,9 +43,12 @@ func (e entry) installed() bool {
 	return err == nil
 }
 
-// desktop is an XDG autostart entry; Exec quoting follows the desktop entry spec.
+// desktop is an XDG autostart entry. Exec quoting follows the desktop entry
+// spec: escape for the quoted argument, then the value is a string whose
+// backslashes double again, and % starts a field code so it doubles too.
 func desktop(exe string) string {
 	q := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "`", "\\`", "$", `\$`).Replace(exe)
+	q = strings.NewReplacer(`\`, `\\`, "%", "%%").Replace(q)
 	return fmt.Sprintf("[Desktop Entry]\nType=Application\nName=proz\nComment=Nudges you about projects that went quiet\nExec=\"%s\" tray\nX-GNOME-Autostart-enabled=true\n", q)
 }
 

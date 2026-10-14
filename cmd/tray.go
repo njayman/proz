@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"time"
 
 	"github.com/njayman/proz/autostart"
@@ -20,7 +21,8 @@ var trayCmd = &cobra.Command{
 	Long: "Run in the background with a tray icon. It checks every 15 minutes,\n" +
 		"shows a dot while any project is quiet, and notifies once per quiet\n" +
 		"stretch. The menu resumes, snoozes or drops each quiet project.\n" +
-		"'proz tray autostart on' starts it at login.",
+		"'proz tray autostart on' starts it at login; 'proz config tray off'\n" +
+		"stops a running tray and removes it from login.",
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if !tray.Available {
@@ -31,7 +33,12 @@ var trayCmd = &cobra.Command{
 		}
 		return tray.Run(tray.Deps{
 			Interval: trayInterval,
-			Check:    func() error { _, err := runCheck(); return err },
+			Enabled: func() bool {
+				on := true // if the setting cannot be read, keep running
+				withStore(func(s *core.Store) (err error) { on, err = s.ModuleOn(core.ModuleTray); return err })
+				return on
+			},
+			Check: func() error { _, err := runCheck(); return err },
 			Nudges: func() (ns []core.Status, err error) {
 				err = withStore(func(s *core.Store) error { ns, err = s.Nudges(); return err })
 				return ns, err
@@ -50,32 +57,31 @@ var trayCmd = &cobra.Command{
 // the program starts on its own. ponytail: first program only; terminal
 // editors (vim) need a terminal and will not show; use 'proz resume' there.
 func resumeDetached(id int64) error {
-	var cmd interface{ Start() error }
-	err := withStore(func(s *core.Store) error {
-		projects, err := s.Projects()
+	var cmd *exec.Cmd
+	var p core.Project
+	if err := withStore(func(s *core.Store) error {
+		st, err := s.Status(id)
 		if err != nil {
 			return err
 		}
-		for _, p := range projects {
-			if p.ID != id {
-				continue
-			}
-			program := ""
-			if len(p.Programs) > 0 {
-				program = p.Programs[0]
-			}
-			c, err := s.Launch(p, program)
-			if c != nil {
-				cmd = c
-			}
-			return err
+		p = st.Project
+		program := ""
+		if len(p.Programs) > 0 {
+			program = p.Programs[0]
 		}
-		return core.ErrNotFound
-	})
-	if err != nil || cmd == nil {
+		cmd, err = s.Launch(p, program)
+		return err
+	}); err != nil {
 		return err
 	}
-	return cmd.Start()
+	if cmd == nil {
+		return fmt.Errorf("%s has no folder or program to open; run 'proz resume %s' in a terminal", p.Name, p.Name)
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go cmd.Wait() // reap it when it exits, so no zombie lingers
+	return nil
 }
 
 var trayAutostartCmd = &cobra.Command{
@@ -102,6 +108,9 @@ var trayAutostartCmd = &cobra.Command{
 				return err
 			}
 			if err := autostart.Install(exe); err != nil {
+				return err
+			}
+			if err := withStore(func(s *core.Store) error { return s.SetModule(core.ModuleTray, true) }); err != nil {
 				return err
 			}
 			fmt.Println("The tray will start at login.")

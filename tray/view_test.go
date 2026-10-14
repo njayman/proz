@@ -3,6 +3,7 @@ package tray
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"image/png"
 	"reflect"
 	"strings"
@@ -59,5 +60,17 @@ func TestIconsArePNGAndTheDotChangesThem(t *testing.T) {
 	binary.Read(bytes.NewReader(ico), binary.LittleEndian, &hdr)
 	if hdr.Type != 1 || hdr.Count != 1 || !bytes.HasSuffix(ico, dot) {
 		t.Fatalf("windows needs an ICO wrapping the png: %+v", hdr)
+	}
+}
+
+func TestSnapshotReadsNudgesAndReportsErrorsWithoutLosingTheIcon(t *testing.T) {
+	v, err := snapshot(Deps{Nudges: func() ([]core.Status, error) { return []core.Status{nudge(1, "web", "q")}, nil }})
+	if err != nil || !v.Dot || len(v.Items) != 1 {
+		t.Fatalf("got %+v, %v", v, err)
+	}
+	boom := errors.New("database locked")
+	v, err = snapshot(Deps{Nudges: func() ([]core.Status, error) { return nil, boom }})
+	if !errors.Is(err, boom) || v.Dot || !strings.Contains(v.Tooltip, "database locked") {
+		t.Fatalf("an error still renders a view that says so: got %+v, %v", v, err)
 	}
 }

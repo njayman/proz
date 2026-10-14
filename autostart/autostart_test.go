@@ -44,3 +44,13 @@ func TestPlistEscapesThePath(t *testing.T) {
 		t.Fatalf("got %s", b)
 	}
 }
+
+func TestDesktopExecEscapesSpecialCharacters(t *testing.T) {
+	// quoted-argument escapes (\" \$ \\), then the string value doubles each
+	// backslash, and % is a field code so it doubles too
+	got := desktop(`/opt/a"b$c\d%e/proz`)
+	want := `Exec="/opt/a\\"b\\$c\\\\d%%e/proz" tray` + "\n"
+	if !strings.Contains(got, want) {
+		t.Fatalf("got %q", got)
+	}
+}

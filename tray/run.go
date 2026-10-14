@@ -21,22 +21,22 @@ func Run(d Deps) error {
 }
 
 func onReady(d Deps) {
-	systray.SetTitle("")
-	var mu sync.Mutex
+	systray.SetIcon(Icon(false, runtime.GOOS))
+	systray.SetTooltip("proz")
+	var mu sync.Mutex           // guards rebuilding the menu, never held while checking
 	done := make(chan struct{}) // closed when the menu is rebuilt, to stop old click listeners
-	var refresh func()
-	refresh = func() {
+	var show func()
+	show = func() {
 		mu.Lock()
 		defer mu.Unlock()
-		if err := d.Check(); err != nil {
-			d.Log(err)
-		}
-		nudges, err := d.Nudges()
-		if err != nil {
-			d.Log(err)
+		if !d.Enabled() {
+			systray.Quit()
 			return
 		}
-		v := Render(nudges)
+		v, err := snapshot(d)
+		if err != nil {
+			d.Log(err)
+		}
 		systray.SetIcon(Icon(v.Dot, runtime.GOOS))
 		systray.SetTooltip(v.Tooltip)
 
@@ -45,22 +45,31 @@ func onReady(d Deps) {
 		systray.ResetMenu()
 		for _, it := range v.Items {
 			m := systray.AddMenuItem(it.Label, "")
-			on(m.AddSubMenuItem("Resume", "Open it with its program"), done, func() { act(d, d.Resume, it.ID, refresh) })
-			on(m.AddSubMenuItem("Snooze 7 days", "Remind me in a week if still quiet"), done, func() { act(d, d.Snooze, it.ID, refresh) })
-			on(m.AddSubMenuItem("Drop", "Archive until there is new activity"), done, func() { act(d, d.Drop, it.ID, refresh) })
+			on(m.AddSubMenuItem("Resume", "Open it with its program"), done, func() { act(d, d.Resume, it.ID, show) })
+			on(m.AddSubMenuItem("Snooze 7 days", "Remind me in a week if still quiet"), done, func() { act(d, d.Snooze, it.ID, show) })
+			on(m.AddSubMenuItem("Drop", "Archive until there is new activity"), done, func() { act(d, d.Drop, it.ID, show) })
 		}
 		if len(v.Items) > 0 {
 			systray.AddSeparator()
 		}
-		on(systray.AddMenuItem("Check now", ""), done, func() { go refresh() })
+		on(systray.AddMenuItem("Check now", ""), done, func() { go check(d, show) })
 		on(systray.AddMenuItem("Quit proz tray", ""), done, systray.Quit)
 	}
-	refresh()
+	show() // icon and menu first, then the slower check
 	go func() {
+		check(d, show)
 		for range time.Tick(d.Interval) {
-			refresh()
+			check(d, show)
 		}
 	}()
+}
+
+// check notifies what just went quiet, then refreshes the menu.
+func check(d Deps, show func()) {
+	if err := d.Check(); err != nil {
+		d.Log(err)
+	}
+	show()
 }
 
 // on runs fn for each click on m until done closes.
@@ -77,9 +86,9 @@ func on(m *systray.MenuItem, done chan struct{}, fn func()) {
 	}()
 }
 
-func act(d Deps, fn func(int64) error, id int64, refresh func()) {
+func act(d Deps, fn func(int64) error, id int64, show func()) {
 	if err := fn(id); err != nil {
 		d.Log(err)
 	}
-	go refresh()
+	go show()
 }

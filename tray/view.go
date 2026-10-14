@@ -50,6 +50,16 @@ func Render(nudges []core.Status) View {
 	return v
 }
 
+// snapshot is what the tray should show now. On error it still returns a
+// view, one that says what went wrong, so the tray keeps its icon and menu.
+func snapshot(d Deps) (View, error) {
+	nudges, err := d.Nudges()
+	if err != nil {
+		return View{Tooltip: "proz: " + err.Error()}, err
+	}
+	return Render(nudges), nil
+}
+
 // Icon draws the tray icon: a ring, plus a red dot when something went
 // quiet. Windows wants an ICO, which can wrap a PNG.
 func Icon(dot bool, goos string) []byte {

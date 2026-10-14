@@ -10,6 +10,7 @@ import (
 // the tray holds no domain rules.
 type Deps struct {
 	Interval time.Duration
+	Enabled  func() bool                   // false once the user switches the tray off; it then quits
 	Check    func() error                  // one iteration: notify what just went quiet
 	Nudges   func() ([]core.Status, error) // what the menu lists
 	Resume   func(id int64) error
