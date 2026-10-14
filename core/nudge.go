@@ -11,12 +11,14 @@ import (
 
 const defaultStale = 7 * 24 * time.Hour
 
-// Nudge is a project that has been quiet longer than its stale threshold.
-type Nudge struct {
-	Name         string
-	Path         string
+// Status is where a project stands as of now: its newest activity, how long
+// it has been quiet, whether that makes it stale, and its left-off note.
+type Status struct {
+	Project
 	LastActivity time.Time
 	Quiet        time.Duration
+	Stale        bool
+	Note         Note
 }
 
 // StaleThreshold is how long a project may be quiet before it nudges.
@@ -70,59 +72,125 @@ func (s *Store) ProjectStaleThreshold(id int64) (time.Duration, error) {
 }
 
 // Nudges returns every stale project as of now, in the order they were added.
-func (s *Store) Nudges() ([]Nudge, error) {
-	// read before Query: the store has one connection, which rows holds until closed
-	stale, err := s.StaleThreshold()
+func (s *Store) Nudges() ([]Status, error) {
+	all, err := s.statuses(0)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Query(`SELECT name, path, max(created_at, coalesce(last_launch, 0)), stale_seconds FROM projects WHERE workspace_id = ? ORDER BY id`, DefaultWorkspace)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	now := s.now()
-	var out []Nudge
-	for rows.Next() {
-		var n Nudge
-		var recorded int64 // newest of registration and launch
-		var override sql.NullInt64
-		if err := rows.Scan(&n.Name, &n.Path, &recorded, &override); err != nil {
-			return nil, err
-		}
-		n.LastActivity = time.Unix(recorded, 0)
-		if c, ok := lastCommit(n.Path); ok && c.After(n.LastActivity) {
-			n.LastActivity = c
-		}
-		n.Quiet = now.Sub(n.LastActivity)
-		threshold := stale
-		if override.Valid {
-			threshold = time.Duration(override.Int64) * time.Second
-		}
-		if n.Quiet > threshold {
-			out = append(out, n)
+	var out []Status
+	for _, st := range all {
+		if st.Stale {
+			out = append(out, st)
 		}
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
-// lastCommit is the newest commit on a local branch (or a detached HEAD)
-// that touches dir. Stashes and remote-tracking refs are not the user's
-// work, and in a bigger repo only commits under dir count. ok is false when
-// dir is empty, git is missing, or no such commit exists, so the project
-// falls back to its other signals; a nudge is the safe failure.
-// ponytail: one git process per project per call; cache by HEAD mtime if project counts grow large.
-func lastCommit(dir string) (t time.Time, ok bool) {
+// Status returns one project's status.
+func (s *Store) Status(id int64) (Status, error) {
+	all, err := s.statuses(id)
+	if err != nil {
+		return Status{}, err
+	}
+	if len(all) == 0 {
+		return Status{}, ErrNotFound
+	}
+	return all[0], nil
+}
+
+// statuses computes the status of project id, or of every project when id is 0.
+func (s *Store) statuses(id int64) ([]Status, error) {
+	global, err := s.StaleThreshold()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(`SELECT id, name, path, max(created_at, coalesce(last_launch, 0)), stale_seconds
+		FROM projects WHERE workspace_id = ? AND (? = 0 OR id = ?) ORDER BY id`, DefaultWorkspace, id, id)
+	if err != nil {
+		return nil, err
+	}
+	type row struct {
+		st        Status
+		recorded  int64 // newest of registration and launch
+		threshold sql.NullInt64
+	}
+	var found []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.st.ID, &r.st.Name, &r.st.Path, &r.recorded, &r.threshold); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		found = append(found, r)
+	}
+	rows.Close() // release the single connection before running git
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	now := s.now()
+	out := make([]Status, 0, len(found))
+	for _, r := range found {
+		st := r.st
+		st.LastActivity = time.Unix(r.recorded, 0)
+		g, hasGit := readGit(st.Path)
+		if hasGit && g.when.After(st.LastActivity) {
+			st.LastActivity = g.when
+		}
+		st.Quiet = now.Sub(st.LastActivity)
+		threshold := global
+		if r.threshold.Valid {
+			threshold = time.Duration(r.threshold.Int64) * time.Second
+		}
+		st.Stale = st.Quiet > threshold
+
+		// Fixed order; later signals insert their line in its slot.
+		st.Note.Lines = []string{quietLine(st.Quiet)}
+		if hasGit {
+			st.Note.Lines = append(st.Note.Lines, "Last commit: "+g.subject)
+			if g.branch != "" {
+				st.Note.Lines = append(st.Note.Lines, "Branch: "+g.branch)
+			}
+		}
+		out = append(out, st)
+	}
+	return out, nil
+}
+
+type gitState struct {
+	when    time.Time
+	subject string
+	branch  string // empty when HEAD is detached
+}
+
+// readGit reads the newest commit on a local branch (or a detached HEAD)
+// that touches dir, and the branch it is on. Stashes and remote-tracking refs
+// are not the user's work, and in a bigger repo only commits under dir count.
+// ok is false when dir is empty, git is missing, or no such commit exists, so
+// the project falls back to its other signals; a nudge is the safe failure.
+// ponytail: one or two git processes per project per call; cache by HEAD mtime if project counts grow large.
+func readGit(dir string) (g gitState, ok bool) {
 	if dir == "" {
-		return t, false
+		return g, false
 	}
-	out, err := exec.Command("git", "-C", dir, "log", "-1", "--branches", "HEAD", "--format=%ct", "--", ".").Output()
+	// %S is the ref the commit was reached from, so the branch matches the commit.
+	out, err := exec.Command("git", "-C", dir, "log", "-1", "--source", "--branches", "HEAD", "--format=%ct%x00%S%x00%s", "--", ".").Output()
 	if err != nil {
-		return t, false
+		return g, false
 	}
-	sec, err := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64)
+	f := strings.SplitN(strings.TrimRight(string(out), "\n"), "\x00", 3)
+	if len(f) != 3 {
+		return g, false
+	}
+	n, err := strconv.ParseInt(f[0], 10, 64)
 	if err != nil {
-		return t, false
+		return g, false
 	}
-	return time.Unix(sec, 0), true
+	g.when, g.subject = time.Unix(n, 0), f[2]
+	if f[1] != "HEAD" {
+		g.branch = strings.TrimPrefix(f[1], "refs/heads/") // git prints either form
+	} else if out, err := exec.Command("git", "-C", dir, "branch", "--show-current").Output(); err == nil {
+		g.branch = strings.TrimSpace(string(out)) // reached from HEAD: the checked-out branch, empty if detached
+	}
+	return g, true
 }

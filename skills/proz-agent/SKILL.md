@@ -33,9 +33,18 @@ Flags compose, e.g. `proz list --json --filter api --sort name --limit 5`.
 proz nudges --json
 ```
 
-Prints projects that have gone quiet (stale): `name`, `path`, `last_activity` (RFC 3339, UTC), `quiet_days` (whole days, rounded down), `quiet_seconds`. `[]` means nothing is stale. Activity is the newest of: registration, the last launch through proz, and the last commit on a local branch that touches the project folder. A project is stale after 7 quiet days by default; `proz config stale-days` prints the threshold and `proz config stale-days <n>` changes it. `--project <name>` reads or sets one project's override (`0` removes it). Only change thresholds when the user asks.
+Prints projects that have gone quiet (stale): `name`, `path`, `last_activity` (RFC 3339, UTC), `quiet_days` (whole days, rounded down), `quiet_seconds`, `note` (the left-off note, one line per signal) and `short_note` (one line, truncated). `[]` means nothing is stale. Activity is the newest of: registration, the last launch through proz, and the last commit on a local branch that touches the project folder. A project is stale after 7 quiet days by default; `proz config stale-days` prints the threshold and `proz config stale-days <n>` changes it. `--project <name>` reads or sets one project's override (`0` removes it). Only change thresholds when the user asks.
 
 Use this when the user asks what they were working on, what they forgot, or what to pick up next. Report the list; don't act on it.
+
+## Where did a project leave off?
+
+```bash
+proz status --json            # the project containing the current directory (subfolders work)
+proz status <name> --json
+```
+
+Same fields as one `nudges` entry, plus `stale` (bool). The note is composed automatically, in fixed order: how long it has been quiet, the last commit message, the branch. Use it when resuming work on a project, before asking the user what they were doing. Without `--json` it prints the note as plain lines.
 
 ## Register a project
 

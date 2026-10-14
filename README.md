@@ -85,6 +85,10 @@ Alias for `delete`.
 
 Lists projects that have gone quiet: no registration, no launch through proz, and no git commit touching the folder (on a local branch) for longer than the stale threshold, 7 days by default.
 
+### `proz status [project] [--json]`
+
+Prints where a project left off: how long it has been quiet, the last commit message and the branch. With no name, uses the project containing the current directory. `proz nudges` shows the same note in short form.
+
 ### `proz config stale-days [days] [--project <name>]`
 
 Prints the stale threshold in days, or sets it. With `--project`, reads or sets that project's own threshold; `0` removes the override.

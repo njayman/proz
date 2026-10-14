@@ -9,7 +9,10 @@ import (
 	"time"
 )
 
-const day = 24 * time.Hour
+const (
+	day  = 24 * time.Hour
+	hour = time.Hour
+)
 
 // clock is a settable fake clock.
 type clock struct{ t time.Time }
@@ -26,7 +29,7 @@ func openAt(t *testing.T, c *clock) *Store {
 	return s
 }
 
-func nudgesAt(t *testing.T, s *Store) []Nudge {
+func nudgesAt(t *testing.T, s *Store) []Status {
 	t.Helper()
 	ns, err := s.Nudges()
 	if err != nil {
