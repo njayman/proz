@@ -24,6 +24,9 @@ var staleDaysCmd = &cobra.Command{
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var p Project
+		if cmd.Flags().Changed("project") && staleProject == "" {
+			return fmt.Errorf("--project needs a project name")
+		}
 		if staleProject != "" {
 			var err error
 			if p, err = findProject(staleProject); err != nil {

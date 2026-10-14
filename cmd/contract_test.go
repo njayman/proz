@@ -133,8 +133,13 @@ func TestConfigProjectStaleDays(t *testing.T) {
 	if out := run(t, "config", "stale-days", "--project", "web"); out != "7\n" {
 		t.Fatalf("cleared: got %q", out)
 	}
-	rootCmd.SetArgs([]string{"config", "stale-days", "5", "--project", "nope"})
-	if rootCmd.Execute() == nil {
-		t.Fatal("unknown project should fail")
+	for _, name := range []string{"nope", ""} {
+		rootCmd.SetArgs([]string{"config", "stale-days", "5", "--project", name})
+		if rootCmd.Execute() == nil {
+			t.Fatalf("project %q should fail", name)
+		}
+	}
+	if out := run(t, "config", "stale-days", "--project", "api"); out != "7\n" {
+		t.Fatalf("global must be untouched by failed sets: got %q", out)
 	}
 }
