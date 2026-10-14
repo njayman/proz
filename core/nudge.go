@@ -104,20 +104,24 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Query(`SELECT id, name, path, max(created_at, coalesce(last_launch, 0)), stale_seconds
-		FROM projects WHERE workspace_id = ? AND (? = 0 OR id = ?) ORDER BY id`, DefaultWorkspace, id, id)
+	rows, err := s.db.Query(`SELECT p.id, p.name, p.path,
+			max(p.created_at, coalesce(p.last_launch, 0), coalesce(m.created_at, 0)), p.stale_seconds, m.text
+		FROM projects p
+		LEFT JOIN milestones m ON m.id = (SELECT max(id) FROM milestones WHERE project_id = p.id AND workspace_id = p.workspace_id)
+		WHERE p.workspace_id = ? AND (? = 0 OR p.id = ?) ORDER BY p.id`, DefaultWorkspace, id, id)
 	if err != nil {
 		return nil, err
 	}
 	type row struct {
 		st        Status
-		recorded  int64 // newest of registration and launch
+		recorded  int64 // newest of registration, launch and milestone
 		threshold sql.NullInt64
+		milestone sql.NullString // latest
 	}
 	var found []row
 	for rows.Next() {
 		var r row
-		if err := rows.Scan(&r.st.ID, &r.st.Name, &r.st.Path, &r.recorded, &r.threshold); err != nil {
+		if err := rows.Scan(&r.st.ID, &r.st.Name, &r.st.Path, &r.recorded, &r.threshold, &r.milestone); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -146,6 +150,9 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 
 		// Fixed order; later signals insert their line in its slot.
 		st.Note.Lines = []string{quietLine(st.Quiet)}
+		if r.milestone.Valid {
+			st.Note.Lines = append(st.Note.Lines, "Milestone: "+strings.Join(strings.Fields(r.milestone.String), " "))
+		}
 		if hasGit {
 			st.Note.Lines = append(st.Note.Lines, "Last commit: "+g.subject)
 			if g.branch != "" {

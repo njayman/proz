@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/njayman/proz/core"
 	"github.com/spf13/cobra"
@@ -18,32 +20,54 @@ var statusCmd = &cobra.Command{
 		"contains the current directory (including subfolders).",
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		var p core.Project
-		var err error
-		if len(args) == 1 {
-			p, err = findProject(args[0])
-		} else {
-			p, err = projectHere()
-		}
+		p, err := resolveProject(args)
 		if err != nil {
 			return err
 		}
 		var st core.Status
+		var milestones []core.Milestone
 		if err := withStore(func(s *core.Store) (err error) {
-			st, err = s.Status(p.ID)
+			if st, err = s.Status(p.ID); err != nil {
+				return err
+			}
+			milestones, err = s.Milestones(p.ID)
 			return err
 		}); err != nil {
 			return err
 		}
 		if statusJSON {
+			type milestoneJSON struct {
+				Text string `json:"text"`
+				At   string `json:"at"`
+			}
+			ms := []milestoneJSON{}
+			for _, m := range milestones {
+				ms = append(ms, milestoneJSON{m.Text, m.At.UTC().Format(time.RFC3339)})
+			}
 			return printJSON(struct {
 				nudgeJSON
-				Stale bool `json:"stale"`
-			}{toNudgeJSON(st), st.Stale})
+				Stale      bool            `json:"stale"`
+				Milestones []milestoneJSON `json:"milestones"`
+			}{toNudgeJSON(st), st.Stale, ms})
 		}
 		fmt.Println(st.Note.Full())
+		if len(milestones) > 0 {
+			fmt.Println("\nMilestones:")
+			for _, m := range milestones {
+				fmt.Printf("%s  %s\n", m.At.UTC().Format(time.DateOnly), strings.ReplaceAll(m.Text, "\n", "\n            "))
+			}
+		}
 		return nil
 	},
+}
+
+// resolveProject is the project named by args[0], or with no args the one
+// containing the current directory.
+func resolveProject(args []string) (core.Project, error) {
+	if len(args) > 0 {
+		return findProject(args[0])
+	}
+	return projectHere()
 }
 
 // projectHere is the project containing the current directory.
