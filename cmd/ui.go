@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
@@ -204,7 +205,7 @@ type binaryPickerModel struct {
 
 func newBinaryPickerModel(binaries []string) binaryPickerModel {
 	apps := parseDesktopFiles()
-	recent := loadRecentExecs()
+	recent := loadRecentPrograms()
 	m := binaryPickerModel{
 		desktopApps:  apps,
 		filteredApps: apps,
@@ -354,12 +355,7 @@ func (m *binaryPickerModel) applyFilter() {
 }
 
 func (m *binaryPickerModel) isToggled(name string) bool {
-	for _, t := range m.toggled {
-		if t == name {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(m.toggled, name)
 }
 
 func (m *binaryPickerModel) toggle(name string) {

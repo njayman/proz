@@ -2,9 +2,7 @@ package cmd
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
-	"github.com/njayman/proz/utils"
 	"os"
 	"strings"
 
@@ -18,7 +16,6 @@ var editCmd = &cobra.Command{
 		"the project picker. Falls back to text prompts if the TUI is unavailable.",
 	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		utils.EnsureConfigFolderExists()
 
 		projects, err := loadProjects()
 		if err != nil {
@@ -72,20 +69,9 @@ var editCmd = &cobra.Command{
 			return
 		}
 
-		for i := range projects {
-			if projects[i].Name == target.Name && projects[i].Path == target.Path {
-				projects[i] = *edited
-				break
-			}
-		}
-
-		fileData, err := json.MarshalIndent(projects, "", "  ")
-		if err != nil {
-			fmt.Printf("Error serializing projects: %v\n", err)
-			return
-		}
-		if err := os.WriteFile(utils.GetConfigFilePath(), fileData, 0644); err != nil {
-			fmt.Printf("Error writing to file: %v\n", err)
+		edited.ID = target.ID
+		if err := updateProject(*edited); err != nil {
+			fmt.Printf("Error saving project: %v\n", err)
 			return
 		}
 		fmt.Printf("Project '%s' updated successfully!\n", edited.Name)

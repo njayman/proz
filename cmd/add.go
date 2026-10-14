@@ -2,38 +2,13 @@ package cmd
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/njayman/proz/utils"
 	"github.com/spf13/cobra"
 )
-
-type Project struct {
-	Name      string   `json:"name"`
-	Path      string   `json:"path"`
-	Programs  []string `json:"programs,omitempty"`
-	Arguments []string `json:"arguments"`
-}
-
-// UnmarshalJSON migrates the old single "executable" field into Programs.
-func (p *Project) UnmarshalJSON(data []byte) error {
-	type Alias Project
-	aux := struct {
-		Executable string `json:"executable"`
-		*Alias
-	}{Alias: (*Alias)(p)}
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
-	}
-	if len(p.Programs) == 0 && aux.Executable != "" {
-		p.Programs = []string{aux.Executable}
-	}
-	return nil
-}
 
 var addCmd = &cobra.Command{
 	Use:   "add [project-name]",
@@ -51,7 +26,6 @@ var addCmd = &cobra.Command{
 		}
 
 		project := Project{Name: name, Path: path}
-		utils.EnsureConfigFolderExists()
 		if err := saveProject(project); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return
@@ -78,7 +52,6 @@ func addFromPath(path string) {
 
 	name := filepath.Base(absPath)
 	project := Project{Name: name, Path: absPath}
-	utils.EnsureConfigFolderExists()
 	if err := saveProject(project); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return
@@ -95,7 +68,7 @@ func saveProject(project Project) error {
 	} else if len(programs) > 0 {
 		project.Programs = programs
 		for _, p := range programs {
-			pushRecentExec(p)
+			pushRecentProgram(p)
 		}
 	}
 
@@ -111,24 +84,4 @@ func saveProject(project Project) error {
 
 	appendProject(project)
 	return nil
-}
-
-func appendProject(project Project) {
-	utils.EnsureConfigFolderExists()
-	dataFile := utils.GetConfigFilePath()
-
-	var projects []Project
-	if file, err := os.ReadFile(dataFile); err == nil {
-		json.Unmarshal(file, &projects)
-	}
-
-	projects = append(projects, project)
-	fileData, err := json.MarshalIndent(projects, "", "  ")
-	if err != nil {
-		fmt.Printf("Error serializing projects: %v\n", err)
-		return
-	}
-	if err := os.WriteFile(dataFile, fileData, 0644); err != nil {
-		fmt.Printf("Error writing to file: %v\n", err)
-	}
 }

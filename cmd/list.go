@@ -3,9 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/njayman/proz/utils"
 	"os"
-	"os/exec"
 	"sort"
 	"strings"
 
@@ -28,7 +26,6 @@ var listCmd = &cobra.Command{
 		"--json prints all projects as JSON instead.\n" +
 		"--filter, --sort, and --limit apply to both the picker and --json output.",
 	Run: func(cmd *cobra.Command, args []string) {
-		utils.EnsureConfigFolderExists()
 
 		projects, err := loadProjects()
 
@@ -91,9 +88,11 @@ var listCmd = &cobra.Command{
 			if err == nil && len(programs) > 0 {
 				selected.Programs = programs
 				for _, p := range programs {
-					pushRecentExec(p)
+					pushRecentProgram(p)
 				}
-				updateProjectPrograms(*selected)
+				if err := updateProject(*selected); err != nil {
+					fmt.Fprintf(os.Stderr, "Error saving programs: %v\n", err)
+				}
 			}
 		}
 
@@ -110,7 +109,9 @@ var listCmd = &cobra.Command{
 			}
 		}
 
-		openProjectDetached(*selected, program)
+		if err := launch(*selected, program); err != nil {
+			fmt.Fprintf(os.Stderr, "Error launching %s: %v\n", program, err)
+		}
 
 		fmt.Println(selected.Path)
 		fmt.Fprintln(os.Stderr, "Tip: use 'proz add'/'proz delete' to manage projects")
@@ -154,68 +155,6 @@ func applyListOptions(projects []Project) ([]Project, error) {
 
 	if listLimit > 0 && listLimit < len(projects) {
 		projects = projects[:listLimit]
-	}
-
-	return projects, nil
-}
-
-func openProjectDetached(project Project, program string) {
-	if program == "" {
-		return
-	}
-
-	pushRecentExec(program)
-
-	os.Chdir(project.Path)
-	cmd := exec.Command(program, append(project.Arguments, project.Path)...)
-	if tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0); err == nil {
-		defer tty.Close()
-		cmd.Stdin = tty
-		cmd.Stdout = tty
-		cmd.Stderr = tty
-	} else {
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-	}
-	cmd.Run()
-}
-
-func updateProjectPrograms(project Project) {
-	projects, err := loadProjects()
-	if err != nil {
-		return
-	}
-	for i := range projects {
-		if projects[i].Name == project.Name && projects[i].Path == project.Path {
-			projects[i].Programs = project.Programs
-			break
-		}
-	}
-	data, err := json.MarshalIndent(projects, "", "  ")
-	if err != nil {
-		return
-	}
-	os.WriteFile(utils.GetConfigFilePath(), data, 0644)
-}
-
-func loadProjects() ([]Project, error) {
-	dataFile := utils.GetConfigFilePath()
-
-	var projects []Project
-
-	if _, err := os.Stat(dataFile); os.IsNotExist(err) {
-		return projects, nil
-	}
-
-	file, err := os.ReadFile(dataFile)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to read data config file: %w\n", err)
-	}
-
-	if err := json.Unmarshal(file, &projects); err != nil {
-		return nil, fmt.Errorf("failed to parse project data. Data tile may be corrupted or broken. %w", err)
 	}
 
 	return projects, nil

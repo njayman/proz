@@ -1,9 +1,7 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
-	"github.com/njayman/proz/utils"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -61,15 +59,8 @@ var deleteCmd = &cobra.Command{
 		}
 
 		name := projects[idx].Name
-		projects = append(projects[:idx], projects[idx+1:]...)
-
-		fileData, err := json.MarshalIndent(projects, "", "  ")
-		if err != nil {
-			fmt.Printf("Error serializing projects: %v\n", err)
-			return
-		}
-		if err := os.WriteFile(utils.GetConfigFilePath(), fileData, 0644); err != nil {
-			fmt.Printf("Error writing to file: %v\n", err)
+		if err := removeProject(projects[idx].ID); err != nil {
+			fmt.Printf("Error deleting project: %v\n", err)
 			return
 		}
 		fmt.Printf("Project '%s' deleted successfully!\n", name)
