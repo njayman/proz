@@ -179,3 +179,67 @@ func TestProjectWithoutFolderIgnoresCurrentDirectoryRepo(t *testing.T) {
 		t.Fatalf("want stale idea, got %+v", ns)
 	}
 }
+
+func onlyProject(t *testing.T, s *Store) Project {
+	t.Helper()
+	ps, err := s.Projects()
+	if err != nil || len(ps) != 1 {
+		t.Fatalf("want one project, got %+v, %v", ps, err)
+	}
+	return ps[0]
+}
+
+func TestLastActivityIsNewestOfRegistrationLaunchAndCommit(t *testing.T) {
+	c := &clock{t0}
+	s := openAt(t, c)
+	dir, commit := gitRepo(t)
+	s.AddProject(Project{Name: "app", Path: dir})
+	p := onlyProject(t, s)
+
+	c.t = t0.Add(5 * day)
+	if _, err := s.Launch(p, ""); err != nil { // opening without a program still counts
+		t.Fatal(err)
+	}
+	c.t = t0.Add(10 * day)
+	if ns := nudgesAt(t, s); len(ns) != 0 {
+		t.Fatalf("launched 5 days ago: want none, got %+v", ns)
+	}
+	c.t = t0.Add(13 * day)
+	if ns := nudgesAt(t, s); len(ns) != 1 || !ns[0].LastActivity.Equal(t0.Add(5*day)) {
+		t.Fatalf("want stale since launch, got %+v", ns)
+	}
+
+	commit(t0.Add(4 * day)) // older than the launch: launch still wins
+	if ns := nudgesAt(t, s); len(ns) != 1 || !ns[0].LastActivity.Equal(t0.Add(5*day)) {
+		t.Fatalf("older commit must not win, got %+v", ns)
+	}
+	commit(t0.Add(12 * day))
+	if ns := nudgesAt(t, s); len(ns) != 0 {
+		t.Fatalf("newer commit wins, want none, got %+v", ns)
+	}
+}
+
+func TestProjectThresholdOverridesGlobalUntilCleared(t *testing.T) {
+	c := &clock{t0}
+	s := openAt(t, c)
+	s.AddProject(Project{Name: "slow", Path: t.TempDir()})
+	s.AddProject(Project{Name: "fast", Path: t.TempDir()})
+	ps, _ := s.Projects()
+	if err := s.SetProjectStaleThreshold(ps[0].ID, 30*day); err != nil {
+		t.Fatal(err)
+	}
+
+	c.t = t0.Add(10 * day)
+	if ns := nudgesAt(t, s); len(ns) != 1 || ns[0].Name != "fast" {
+		t.Fatalf("slow has 30 days: want only fast, got %+v", ns)
+	}
+	if err := s.SetProjectStaleThreshold(ps[0].ID, 0); err != nil { // 0 clears the override
+		t.Fatal(err)
+	}
+	if ns := nudgesAt(t, s); len(ns) != 2 {
+		t.Fatalf("cleared override falls back to global: want both, got %+v", ns)
+	}
+	if err := s.SetProjectStaleThreshold(42, 30*day); err == nil {
+		t.Fatal("override on unknown project should fail")
+	}
+}

@@ -83,11 +83,11 @@ Alias for `delete`.
 
 ### `proz nudges [--json]`
 
-Lists projects that have gone quiet: no git commit touching the folder (on a local branch) and no registration for longer than the stale threshold, 7 days by default.
+Lists projects that have gone quiet: no registration, no launch through proz, and no git commit touching the folder (on a local branch) for longer than the stale threshold, 7 days by default.
 
-### `proz config stale-days [days]`
+### `proz config stale-days [days] [--project <name>]`
 
-Prints the stale threshold in days, or sets it.
+Prints the stale threshold in days, or sets it. With `--project`, reads or sets that project's own threshold; `0` removes the override.
 
 ### `proz completion [bash|zsh|fish|powershell]`
 
