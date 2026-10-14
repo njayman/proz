@@ -114,3 +114,27 @@ func TestConfigStaleDays(t *testing.T) {
 		t.Fatalf("after set: got %q", out)
 	}
 }
+
+func TestConfigProjectStaleDays(t *testing.T) {
+	t.Cleanup(func() { staleProject = "" }) // cobra keeps flag values between Execute calls
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
+	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": "/web"}, {"name": "api", "path": "/api"}]`), 0644)
+
+	run(t, "config", "stale-days", "30", "--project", "web")
+	if out := run(t, "config", "stale-days", "--project", "web"); out != "30\n" {
+		t.Fatalf("override: got %q", out)
+	}
+	if out := run(t, "config", "stale-days", "--project", "api"); out != "7\n" {
+		t.Fatalf("no override shows global: got %q", out)
+	}
+	run(t, "config", "stale-days", "0", "--project", "web")
+	if out := run(t, "config", "stale-days", "--project", "web"); out != "7\n" {
+		t.Fatalf("cleared: got %q", out)
+	}
+	rootCmd.SetArgs([]string{"config", "stale-days", "5", "--project", "nope"})
+	if rootCmd.Execute() == nil {
+		t.Fatal("unknown project should fail")
+	}
+}

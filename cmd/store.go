@@ -81,3 +81,17 @@ func launch(project Project, program string) error {
 	}
 	return cmd.Run()
 }
+
+// findProject returns the first project named name, the same rule delete and edit use.
+func findProject(name string) (Project, error) {
+	projects, err := loadProjects()
+	if err != nil {
+		return Project{}, err
+	}
+	for _, p := range projects {
+		if p.Name == name {
+			return p, nil
+		}
+	}
+	return Project{}, fmt.Errorf("project %q not found", name)
+}

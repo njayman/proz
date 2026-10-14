@@ -208,7 +208,9 @@ func TestCorruptRecentJSONIsSkipped(t *testing.T) {
 
 func TestLaunchRecordsProgramAndBuildsCommand(t *testing.T) {
 	s := open(t, t.TempDir())
-	p := Project{Name: "web", Path: "/web", Arguments: []string{"--new-window"}}
+	s.AddProject(Project{Name: "web", Path: "/web", Arguments: []string{"--new-window"}})
+	ps, _ := s.Projects()
+	p := ps[0]
 
 	if cmd, err := s.Launch(p, ""); err != nil || cmd != nil {
 		t.Fatalf("no program: want nil command, got %v, %v", cmd, err)
@@ -220,6 +222,9 @@ func TestLaunchRecordsProgramAndBuildsCommand(t *testing.T) {
 	cmd, err := s.Launch(p, "code")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if _, err := s.Launch(Project{ID: 42}, ""); err == nil {
+		t.Fatal("launching an unknown project should fail")
 	}
 	if want := []string{"code", "--new-window", "/web"}; !reflect.DeepEqual(cmd.Args, want) || cmd.Dir != "/web" {
 		t.Fatalf("got args %v dir %q", cmd.Args, cmd.Dir)

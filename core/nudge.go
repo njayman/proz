@@ -38,6 +38,37 @@ func (s *Store) SetStaleThreshold(d time.Duration) error {
 	return err
 }
 
+// SetProjectStaleThreshold overrides the stale threshold for one project;
+// d == 0 removes the override so the global threshold applies again.
+func (s *Store) SetProjectStaleThreshold(id int64, d time.Duration) error {
+	var sec any // NULL clears
+	if d != 0 {
+		if d < time.Second {
+			return errors.New("stale threshold must be positive")
+		}
+		sec = int64(d / time.Second)
+	}
+	res, err := s.db.Exec(`UPDATE projects SET stale_seconds = ? WHERE id = ? AND workspace_id = ?`, sec, id, DefaultWorkspace)
+	return foundOrErr(res, err)
+}
+
+// ProjectStaleThreshold is the threshold that applies to one project: its
+// override if set, otherwise the global threshold.
+func (s *Store) ProjectStaleThreshold(id int64) (time.Duration, error) {
+	var sec sql.NullInt64
+	err := s.db.QueryRow(`SELECT stale_seconds FROM projects WHERE id = ? AND workspace_id = ?`, id, DefaultWorkspace).Scan(&sec)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	if !sec.Valid {
+		return s.StaleThreshold()
+	}
+	return time.Duration(sec.Int64) * time.Second, nil
+}
+
 // Nudges returns every stale project as of now, in the order they were added.
 func (s *Store) Nudges() ([]Nudge, error) {
 	// read before Query: the store has one connection, which rows holds until closed
@@ -45,7 +76,7 @@ func (s *Store) Nudges() ([]Nudge, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Query(`SELECT name, path, created_at FROM projects WHERE workspace_id = ? ORDER BY id`, DefaultWorkspace)
+	rows, err := s.db.Query(`SELECT name, path, max(created_at, coalesce(last_launch, 0)), stale_seconds FROM projects WHERE workspace_id = ? ORDER BY id`, DefaultWorkspace)
 	if err != nil {
 		return nil, err
 	}
@@ -54,16 +85,21 @@ func (s *Store) Nudges() ([]Nudge, error) {
 	var out []Nudge
 	for rows.Next() {
 		var n Nudge
-		var created int64
-		if err := rows.Scan(&n.Name, &n.Path, &created); err != nil {
+		var recorded int64 // newest of registration and launch
+		var override sql.NullInt64
+		if err := rows.Scan(&n.Name, &n.Path, &recorded, &override); err != nil {
 			return nil, err
 		}
-		n.LastActivity = time.Unix(created, 0)
+		n.LastActivity = time.Unix(recorded, 0)
 		if c, ok := lastCommit(n.Path); ok && c.After(n.LastActivity) {
 			n.LastActivity = c
 		}
 		n.Quiet = now.Sub(n.LastActivity)
-		if n.Quiet > stale {
+		threshold := stale
+		if override.Valid {
+			threshold = time.Duration(override.Int64) * time.Second
+		}
+		if n.Quiet > threshold {
 			out = append(out, n)
 		}
 	}
