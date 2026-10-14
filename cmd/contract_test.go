@@ -113,8 +113,8 @@ func TestNudgesJSONContract(t *testing.T) {
     "last_activity": "2026-10-01T09:00:00Z",
     "quiet_days": 10,
     "quiet_seconds": 867600,
-    "note": "Quiet for 10 days",
-    "short_note": "Quiet for 10 days"
+    "note": "Quiet for 10 days\nFolder missing: /web",
+    "short_note": "Quiet for 10 days; Folder missing: /web"
   }
 ]
 `
@@ -328,8 +328,9 @@ func TestRespondingToNudges(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
+	web := t.TempDir() // its own folder: the config dir's database file would count as activity
 	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[
-  {"name": "web", "path": "`+dir+`", "programs": ["true"]},
+  {"name": "web", "path": "`+web+`", "programs": ["true"]},
   {"name": "api", "path": "/api"}
 ]`), 0644)
 	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)

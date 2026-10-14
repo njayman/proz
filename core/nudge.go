@@ -3,6 +3,7 @@ package core
 import (
 	"database/sql"
 	"errors"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -164,6 +165,18 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 		if hasGit && g.when.After(st.LastActivity) {
 			st.LastActivity = g.when
 		}
+		missing := false
+		if st.Path != "" {
+			_, err := os.Stat(st.Path)
+			missing = errors.Is(err, os.ErrNotExist)
+		}
+		var work workState
+		if st.Path != "" && !missing {
+			work = readWork(st.Path)
+		}
+		if work.when.After(st.LastActivity) {
+			st.LastActivity = work.when
+		}
 		cl, hasClaude := readClaude(st.Path)
 		if hasClaude && cl.when.After(st.LastActivity) {
 			st.LastActivity = cl.when
@@ -209,8 +222,14 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 				st.Note.Lines = append(st.Note.Lines, "Branch: "+g.branch)
 			}
 		}
+		if work.uncommitted > 0 {
+			st.Note.Lines = append(st.Note.Lines, plural("Uncommitted: %d file", work.uncommitted))
+		}
 		if hasClaude && cl.prompt != "" {
 			st.Note.Lines = append(st.Note.Lines, "Last prompt: "+cl.prompt)
+		}
+		if missing {
+			st.Note.Lines = append(st.Note.Lines, "Folder missing: "+st.Path)
 		}
 		out = append(out, st)
 	}

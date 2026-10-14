@@ -127,7 +127,7 @@ func TestStaleThresholdIsConfigurableAndPersists(t *testing.T) {
 	if d, _ := s.StaleThreshold(); d != 7*day {
 		t.Fatalf("default want 7 days, got %v", d)
 	}
-	s.AddProject(Project{Name: "slow", Path: dir})
+	s.AddProject(Project{Name: "slow", Path: t.TempDir()}) // not the store dir: its database file is activity
 	if err := s.SetStaleThreshold(14 * day); err != nil {
 		t.Fatal(err)
 	}
