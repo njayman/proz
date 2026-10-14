@@ -40,7 +40,7 @@ Product scope (target users, problems, what is in and out) lives in `docs/produc
 ## Commands
 
 ```bash
-go build -o proz .     # local build
+go build -o proz .     # local build (add -tags tray for the tray; needs cgo on macOS)
 go test ./...          # all tests
 go vet ./...
 ./build.sh             # release binaries for all platforms into ./bin
