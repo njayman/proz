@@ -9,6 +9,8 @@ import (
 
 func init() {
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
+	rootCmd.SilenceUsage = true  // a failed command's error is not a usage mistake
+	rootCmd.SilenceErrors = true // Execute prints it once
 }
 
 var rootCmd = &cobra.Command{
@@ -29,7 +31,7 @@ var rootCmd = &cobra.Command{
 
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "An error occured while executing proz '%s'\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }

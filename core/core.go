@@ -51,6 +51,12 @@ var migrations = []string{
 		workspace_id TEXT NOT NULL DEFAULT 'default',
 		program TEXT NOT NULL
 	)`,
+	`CREATE TABLE settings (
+		workspace_id TEXT NOT NULL DEFAULT 'default',
+		key TEXT NOT NULL,
+		value TEXT NOT NULL,
+		PRIMARY KEY (workspace_id, key)
+	)`,
 }
 
 // Open opens (creating if needed) the store in dir. now is the clock every
