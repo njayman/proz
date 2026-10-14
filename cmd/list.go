@@ -103,18 +103,7 @@ var listCmd = &cobra.Command{
 			}
 		}
 
-		program := ""
-		switch len(selected.Programs) {
-		case 0:
-			// no program configured or chosen; just cd
-		case 1:
-			program = selected.Programs[0]
-		default:
-			choice, err := runProgramSelectPicker(selected.Programs)
-			if err == nil {
-				program = choice
-			}
-		}
+		program := chooseProgram(*selected)
 
 		if err := launch(*selected, program); err != nil {
 			fmt.Fprintf(os.Stderr, "Error launching %s: %v\n", program, err)
@@ -165,4 +154,20 @@ func applyListOptions(projects []Project) ([]Project, error) {
 	}
 
 	return projects, nil
+}
+
+// chooseProgram is the project's program, asking which when it has several.
+// Empty means none: the project is only opened (cd).
+func chooseProgram(p Project) string {
+	switch len(p.Programs) {
+	case 0:
+		return ""
+	case 1:
+		return p.Programs[0]
+	}
+	choice, err := runProgramSelectPicker(p.Programs)
+	if err != nil {
+		return ""
+	}
+	return choice
 }

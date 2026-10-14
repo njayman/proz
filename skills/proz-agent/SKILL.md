@@ -1,6 +1,6 @@
 ---
 name: proz-agent
-description: Read and manage the user's proz project registry (saved project directories, their launch programs, and which have gone quiet). Use when the user asks about their proz projects, what they forgot or should pick up next, when wrapping up or pausing work in a tracked project, when the user floats an idea to keep, wants a project registered, or references a project by name that might be tracked in proz.
+description: Read and manage the user's proz project registry (saved project directories, their launch programs, and which have gone quiet). Use when the user asks about their proz projects, what they forgot or should pick up next, when wrapping up or pausing work in a tracked project, when the user floats an idea to keep, or wants to resume, snooze or drop a project, wants a project registered, or references a project by name that might be tracked in proz.
 ---
 
 # proz agent
@@ -44,7 +44,21 @@ proz status --json            # the project containing the current directory (su
 proz status <name> --json
 ```
 
-Same fields as one `nudges` entry, plus `stale` (bool) and `milestones` (`text`, `at`; newest first, `[]` if none). The note is composed automatically, in fixed order: how long it has been quiet, the latest milestone, the last commit message, the branch. Use it when resuming work on a project, before asking the user what they were doing. Without `--json` it prints the note as plain lines.
+Same fields as one `nudges` entry, plus `stale` (bool, quiet past the threshold), `state` (`active`, `stale`, `snoozed` or `archived`; only `stale` nudges), `snoozed_until` (RFC 3339, only while snoozed) and `milestones` (`text`, `at`; newest first, `[]` if none). The note is composed automatically, in fixed order: how long it has been quiet, the latest milestone, the last commit message, the branch. Use it when resuming work on a project, before asking the user what they were doing. Without `--json` it prints the note as plain lines.
+
+## Respond to a nudge
+
+Every nudge asks the user one decision. Run these only when the user has made it; never snooze or drop on your own judgement.
+
+```bash
+proz resume [project]          # prints the left-off note, then opens the project's program
+proz snooze [project] [days]   # hide the nudge for N days (7 by default); it returns if still quiet
+proz drop [project]            # archive: no more nudges until any new activity revives it
+proz archived --json           # dropped projects, same fields as nudges
+proz restore [project]         # un-archive and clear any snooze
+```
+
+With no project name these use the project containing the current directory. For `snooze` with two arguments, they are the project then the days; with one, an exact project name wins, otherwise a number is the days. A snooze ends early if the project sees new activity: the next quiet stretch nudges as usual. `resume` opens an interactive program in a terminal; from a shell without one, prefer `proz status --json` to read the note and let the user open it.
 
 ## Record a milestone
 
