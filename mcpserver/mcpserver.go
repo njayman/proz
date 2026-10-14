@@ -1,0 +1,154 @@
+// Package mcpserver serves proz to agents over MCP. It runs as the agent's
+// child process over stdio: no network listener, no auth. Tools call core
+// and return the same JSON shapes as the CLI's --json (package contract).
+package mcpserver
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/njayman/proz/contract"
+	"github.com/njayman/proz/core"
+)
+
+// Target names a project: by name, or by any directory inside its folder.
+type Target struct {
+	Project string `json:"project,omitempty" jsonschema:"the project's name"`
+	Dir     string `json:"dir,omitempty" jsonschema:"an absolute path inside the project's folder, such as your working directory; used when project is empty"`
+}
+
+type (
+	noInput   struct{}
+	ideaInput struct {
+		Text string `json:"text" jsonschema:"the idea in one line"`
+	}
+	milestoneInput struct {
+		Target
+		Text string `json:"text" jsonschema:"what is done and what comes next, in one sentence, e.g. 'shipped login; next: signup'"`
+	}
+	named struct {
+		Name string `json:"name"`
+	}
+	projectsOut struct {
+		Projects []contract.Status `json:"projects"`
+	}
+	nudgesOut struct {
+		Nudges []contract.Nudge `json:"nudges"`
+	}
+)
+
+// New returns the proz MCP server. open opens the store for one call, so the
+// server holds no connection between calls, like the CLI.
+func New(open func() (*core.Store, error), version string) *mcp.Server {
+	s := mcp.NewServer(&mcp.Implementation{Name: "proz", Version: version}, nil)
+	with := func(fn func(*core.Store) error) error {
+		st, err := open()
+		if err != nil {
+			return err
+		}
+		defer st.Close()
+		return fn(st)
+	}
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "list_projects",
+		Description: "List every project proz tracks, each with its state (active, stale, snoozed, archived), last activity, left-off note and milestones.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, _ noInput) (*mcp.CallToolResult, projectsOut, error) {
+		out := projectsOut{Projects: []contract.Status{}}
+		err := with(func(st *core.Store) error {
+			all, err := st.Statuses()
+			if err != nil {
+				return err
+			}
+			for _, p := range all {
+				ms, err := st.Milestones(p.ID)
+				if err != nil {
+					return err
+				}
+				out.Projects = append(out.Projects, contract.NewStatus(p, ms))
+			}
+			return nil
+		})
+		return nil, out, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "get_project",
+		Description: "Get one project: where it left off (the note), its state, last activity and milestones. Use it before resuming work on a project.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, in Target) (*mcp.CallToolResult, contract.Status, error) {
+		var out contract.Status
+		err := with(func(st *core.Store) error {
+			p, err := resolve(st, in)
+			if err != nil {
+				return err
+			}
+			status, err := st.Status(p.ID)
+			if err != nil {
+				return err
+			}
+			ms, err := st.Milestones(p.ID)
+			out = contract.NewStatus(status, ms)
+			return err
+		})
+		return nil, out, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "record_milestone",
+		Description: "Record a milestone on a project: what is done and what comes next. It leads the project's left-off note when the user returns. " +
+			"Record one at the end of a work session, when the user pauses or switches away, or after finishing a meaningful piece of work; not per message.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, in milestoneInput) (*mcp.CallToolResult, named, error) {
+		var out named
+		err := with(func(st *core.Store) error {
+			p, err := resolve(st, in.Target)
+			if err != nil {
+				return err
+			}
+			out.Name = p.Name
+			return st.AddMilestone(p.ID, in.Text)
+		})
+		return nil, out, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "capture_idea",
+		Description: "Capture an idea the user is not acting on now as a project with no folder, so it resurfaces when it goes quiet.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, in ideaInput) (*mcp.CallToolResult, named, error) {
+		err := with(func(st *core.Store) error { return st.AddIdea(in.Text) })
+		return nil, named{Name: strings.Join(strings.Fields(in.Text), " ")}, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "list_nudges",
+		Description: "List the projects the user has let go quiet (stale, not snoozed or dropped), each with its left-off note. Use it when the user asks what they forgot or what to pick up next.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, _ noInput) (*mcp.CallToolResult, nudgesOut, error) {
+		var out nudgesOut
+		err := with(func(st *core.Store) error {
+			ns, err := st.Nudges()
+			out.Nudges = contract.Nudges(ns)
+			return err
+		})
+		return nil, out, err
+	})
+	return s
+}
+
+func resolve(st *core.Store, t Target) (core.Project, error) {
+	var p core.Project
+	var err error
+	switch {
+	case t.Project != "":
+		p, err = st.ProjectNamed(t.Project)
+	case t.Dir != "":
+		p, err = st.ProjectAt(t.Dir)
+	default:
+		return p, errors.New("pass project (a name) or dir (a path inside the project)")
+	}
+	if errors.Is(err, core.ErrNotFound) {
+		return p, fmt.Errorf("no proz project matches %q", t.Project+t.Dir)
+	}
+	return p, err
+}
