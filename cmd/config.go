@@ -61,7 +61,40 @@ var staleDaysCmd = &cobra.Command{
 	},
 }
 
+// moduleCmd shows or switches one module on or off.
+func moduleCmd(m core.Module) *cobra.Command {
+	return &cobra.Command{
+		Use:       string(m) + " [on|off]",
+		Short:     "Show or switch " + string(m) + " on or off",
+		Args:      cobra.MaximumNArgs(1),
+		ValidArgs: []string{"on", "off"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return withStore(func(s *core.Store) error {
+				if len(args) == 1 {
+					if args[0] != "on" && args[0] != "off" {
+						return fmt.Errorf("%s: want on or off, got %q", m, args[0])
+					}
+					return s.SetModule(m, args[0] == "on")
+				}
+				on, err := s.ModuleOn(m)
+				if err != nil {
+					return err
+				}
+				if on {
+					fmt.Println("on")
+				} else {
+					fmt.Println("off")
+				}
+				return nil
+			})
+		},
+	}
+}
+
 func init() {
+	for _, m := range core.Modules {
+		configCmd.AddCommand(moduleCmd(m))
+	}
 	staleDaysCmd.Flags().StringVar(&staleProject, "project", "", "project name to override")
 	configCmd.AddCommand(staleDaysCmd)
 	rootCmd.AddCommand(configCmd)

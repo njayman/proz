@@ -20,7 +20,10 @@ type Status struct {
 	Stale        bool // quiet longer than the threshold, whatever the State
 	State        State
 	SnoozedUntil time.Time // zero unless snoozed
+	StaleSince   time.Time // when the current stale period began; zero unless Stale
 	Note         Note
+
+	notified time.Time // last notification, zero if never
 }
 
 // State is what proz does about a project right now. Only StateStale nudges.
@@ -118,7 +121,7 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 	}
 	rows, err := s.db.Query(`SELECT p.id, p.name, p.path,
 			max(p.created_at, coalesce(p.last_launch, 0), coalesce(m.created_at, 0)), p.stale_seconds, m.text,
-			p.snoozed_until, p.snoozed_at, p.dropped_at
+			p.snoozed_until, p.snoozed_at, p.dropped_at, p.notified_at
 		FROM projects p
 		LEFT JOIN milestones m ON m.id = (SELECT max(id) FROM milestones WHERE project_id = p.id AND workspace_id = p.workspace_id)
 		WHERE p.workspace_id = ? AND (? = 0 OR p.id = ?) ORDER BY p.id`, DefaultWorkspace, id, id)
@@ -133,11 +136,12 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 		snoozed   sql.NullInt64  // until
 		snoozedAt sql.NullInt64
 		dropped   sql.NullInt64
+		notified  sql.NullInt64
 	}
 	var found []row
 	for rows.Next() {
 		var r row
-		if err := rows.Scan(&r.st.ID, &r.st.Name, &r.st.Path, &r.recorded, &r.threshold, &r.milestone, &r.snoozed, &r.snoozedAt, &r.dropped); err != nil {
+		if err := rows.Scan(&r.st.ID, &r.st.Name, &r.st.Path, &r.recorded, &r.threshold, &r.milestone, &r.snoozed, &r.snoozedAt, &r.dropped, &r.notified); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -165,6 +169,16 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 		st.Stale = st.Quiet > threshold
 		if r.snoozed.Valid && !st.LastActivity.After(time.Unix(r.snoozedAt.Int64, 0)) {
 			st.SnoozedUntil = time.Unix(r.snoozed.Int64, 0)
+		}
+		if st.Stale {
+			// a snooze ending starts a new stale period, so a new notification
+			st.StaleSince = st.LastActivity.Add(threshold)
+			if st.SnoozedUntil.After(st.StaleSince) {
+				st.StaleSince = st.SnoozedUntil
+			}
+		}
+		if r.notified.Valid {
+			st.notified = time.Unix(r.notified.Int64, 0)
 		}
 		switch {
 		case r.dropped.Valid && !st.LastActivity.After(time.Unix(r.dropped.Int64, 0)):

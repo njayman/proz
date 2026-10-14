@@ -101,6 +101,20 @@ Records a progress checkpoint, usually written by an agent at the end of a sessi
 
 The answers to a nudge. `resume` prints the left-off note and opens the project's program. `snooze [project] [days]` hides the nudge for N days (7 by default); it comes back if the project is still quiet. `drop` archives the project until any new activity revives it, and `restore` brings it back by hand. `proz archived [--json]` lists dropped projects.
 
+### `proz check [--json]`
+
+Runs one check: shows an OS notification for each project that just went quiet, at most once per quiet stretch (a snooze ending counts as a new one). Four or more at once collapse into one summary. Safe to run often; it never repeats itself. Without the tray, schedule it, for example with cron:
+
+```cron
+*/30 * * * * proz check
+```
+
+On Linux the notification goes through `notify-send`, which needs your desktop session; from cron you may need `DBUS_SESSION_BUS_ADDRESS` set. `proz test notification` shows a sample to confirm it works.
+
+### `proz config notifications|tray|email|brain [on|off]`
+
+Shows or switches a module. Notifications are on by default; the tray, email and brain stay off until you enable or configure them.
+
 ### `proz config stale-days [days] [--project <name>]`
 
 Prints the stale threshold in days, or sets it. With `--project`, reads or sets that project's own threshold; `0` removes the override.
