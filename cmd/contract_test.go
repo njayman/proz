@@ -192,6 +192,7 @@ func TestStatusResolvesProjectFromWorkingDirectory(t *testing.T) {
   "note": "Quiet for 3 days",
   "short_note": "Quiet for 3 days",
   "stale": false,
+  "state": "active",
   "milestones": []
 }
 `
@@ -233,6 +234,7 @@ func TestMilestoneByNameAndFromWorkingDirectory(t *testing.T) {
   "note": "Quiet for 2 days\nMilestone: api wired; next: tests",
   "short_note": "Quiet for 2 days; Milestone: api wired; next: tests",
   "stale": false,
+  "state": "active",
   "milestones": [
     {
       "text": "api wired; next: tests",
@@ -318,5 +320,68 @@ func TestAddOffersToAttachAFolderToAMatchingIdea(t *testing.T) {
 	}
 	if out := run(t, "status", "Habit Tracker"); !strings.Contains(out, "sketched data model") {
 		t.Fatalf("attached idea must keep its milestones: %q", out)
+	}
+}
+
+func TestRespondingToNudges(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
+	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[
+  {"name": "web", "path": "`+dir+`", "programs": ["true"]},
+  {"name": "api", "path": "/api"}
+]`), 0644)
+	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	t.Cleanup(func() { now = time.Now })
+	at := func(days int) { now = func() time.Time { return t0.Add(time.Duration(days) * 24 * time.Hour) } }
+	state := func(name string) (out struct {
+		State        string `json:"state"`
+		SnoozedUntil string `json:"snoozed_until"`
+	}) {
+		json.Unmarshal([]byte(run(t, "status", name, "--json")), &out)
+		return out
+	}
+	names := func(args ...string) (out []string) {
+		var entries []struct{ Name string }
+		json.Unmarshal([]byte(run(t, args...)), &entries)
+		for _, e := range entries {
+			out = append(out, e.Name)
+		}
+		return out
+	}
+
+	at(0)
+	run(t, "list", "--json") // import at t0
+	at(10)
+	if got := names("nudges", "--json"); len(got) != 2 {
+		t.Fatalf("both stale: got %v", got)
+	}
+
+	run(t, "snooze", "web", "3")
+	if got := state("web"); got.State != "snoozed" || got.SnoozedUntil != "2026-10-14T09:00:00Z" {
+		t.Fatalf("snooze: got %+v", got)
+	}
+	run(t, "drop", "api")
+	if got := names("archived", "--json"); len(got) != 1 || got[0] != "api" {
+		t.Fatalf("archived: got %v", got)
+	}
+	if got := names("nudges", "--json"); len(got) != 0 {
+		t.Fatalf("snoozed and dropped: want none, got %v", got)
+	}
+
+	run(t, "restore", "api")
+	if got := state("api"); got.State != "stale" {
+		t.Fatalf("restore: got %+v", got)
+	}
+
+	at(20)
+	if out := run(t, "resume", "web"); !strings.HasPrefix(out, "Quiet for 20 days\n") {
+		t.Fatalf("resume prints the note first: %q", out)
+	}
+	if got := state("web"); got.State != "active" {
+		t.Fatalf("resume is a launch, so activity: got %+v", got)
+	}
+	if execute("snooze", "web", "0") == nil {
+		t.Fatal("zero-day snooze should fail")
 	}
 }

@@ -67,6 +67,8 @@ var migrations = []string{
 		created_at INTEGER NOT NULL
 	)`,
 	`CREATE INDEX milestones_by_project ON milestones (project_id, id)`, // latest milestone per project, on every nudges call
+	`ALTER TABLE projects ADD COLUMN snoozed_until INTEGER`,
+	`ALTER TABLE projects ADD COLUMN dropped_at INTEGER`, // archived while no activity is newer
 }
 
 // Open opens (creating if needed) the store in dir. now is the clock every

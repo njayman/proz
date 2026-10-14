@@ -97,6 +97,10 @@ Captures an idea as a project with no folder yet, so it resurfaces too. Register
 
 Records a progress checkpoint, usually written by an agent at the end of a session ("shipped login; next: signup"). The latest milestone leads the left-off note and counts as activity. `proz status` lists them all.
 
+### `proz resume | snooze | drop | restore [project]`
+
+The answers to a nudge. `resume` prints the left-off note and opens the project's program. `snooze [project] [days]` hides the nudge for N days (7 by default); it comes back if the project is still quiet. `drop` archives the project until any new activity revives it, and `restore` brings it back by hand. `proz archived [--json]` lists dropped projects.
+
 ### `proz config stale-days [days] [--project <name>]`
 
 Prints the stale threshold in days, or sets it. With `--project`, reads or sets that project's own threshold; `0` removes the override.
