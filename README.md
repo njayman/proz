@@ -113,7 +113,7 @@ Serves proz to an agent over MCP on stdio, as a child process with no network li
 
 ### `proz check [--json]`
 
-Runs one check: shows an OS notification for each project that just went quiet, at most once per quiet stretch (a snooze ending counts as a new one). Four or more at once collapse into one summary. Safe to run often; it never repeats itself. Without the tray, schedule it instead, for example with cron:
+Runs one check: shows an OS notification for each project that just went quiet, at most once per quiet stretch (a snooze ending counts as a new one), and sends the weekly email digest when it is due. Four or more at once collapse into one summary. Safe to run often; it never repeats itself. Without the tray, schedule it instead, for example with cron:
 
 ```cron
 */30 * * * * proz check
@@ -124,6 +124,20 @@ On Linux the notification goes through `notify-send`, which needs your desktop s
 ### `proz config notifications|tray|email|brain [on|off]`
 
 Shows or switches a module. Notifications are on by default; the tray, email and brain stay off until you enable or configure them.
+
+### `proz config smtp` and `proz config digest-day [weekday]`
+
+Once a week proz emails you every quiet project with its full left-off note and the exact `proz resume`, `snooze` and `drop` commands. Email stays off until you set an SMTP server:
+
+```bash
+proz config smtp --host smtp.gmail.com --username me@gmail.com \
+  --from me@gmail.com --to me@gmail.com --password-stdin
+proz test email
+```
+
+The password is read from stdin (hidden in a terminal) and saved in `smtp.json` in the config folder, readable only by you; nothing else about email is stored there. Port 587 (the default) upgrades with STARTTLS, 465 uses TLS. `proz config smtp` with no flags shows the settings without the password; flags you leave out keep their saved value. For Gmail, use an app password.
+
+The digest goes out on Monday by default (`proz config digest-day friday` changes it), from the tray or `proz check`. If the machine was off that day, it goes out at the next check that week. A week with nothing quiet sends nothing, and a restart never sends twice.
 
 ### `proz config stale-days [days] [--project <name>]`
 

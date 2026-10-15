@@ -1,6 +1,6 @@
-// Package notify renders nudges as OS notifications and shows them with each
-// platform's built-in tool. It holds no domain rules: core decides what is
-// due; this only says it.
+// Package notify renders nudges as OS notifications, shown with each
+// platform's built-in tool, and as the weekly email digest, sent over SMTP.
+// It holds no domain rules: core decides what is due; this only says it.
 package notify
 
 import (

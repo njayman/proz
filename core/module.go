@@ -43,6 +43,11 @@ func (s *Store) SetModule(m Module, on bool) error {
 	if _, ok := moduleDefaults[m]; !ok {
 		return fmt.Errorf("unknown module %q", m)
 	}
+	if m == ModuleEmail && on {
+		if _, ok, err := s.SMTP(); err != nil || !ok {
+			return errors.Join(errors.New("configure SMTP first: proz config smtp"), err)
+		}
+	}
 	v := "off"
 	if on {
 		v = "on"

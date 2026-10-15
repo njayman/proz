@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/njayman/proz/contract"
@@ -18,8 +19,9 @@ var checkCmd = &cobra.Command{
 	Use:   "check",
 	Short: "Run one check: notify about projects that just went quiet",
 	Long: "Run one iteration of the resurfacing loop: find projects that went quiet\n" +
-		"and show one OS notification per project per quiet stretch. Safe to run\n" +
-		"often, from cron or a scheduler; it never repeats a notification.",
+		"and show one OS notification per project per quiet stretch, and send the\n" +
+		"weekly email digest when it is due. Safe to run often, from cron or a\n" +
+		"scheduler; it never repeats a notification or a digest.",
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		notified, err := runCheck()
@@ -37,19 +39,20 @@ var checkCmd = &cobra.Command{
 }
 
 // runCheck notifies about projects that just went quiet, if notifications
-// are on, and returns those it notified. The tray calls it on its interval.
+// are on, and returns those it notified; then sends the weekly digest if
+// email is on and it is due. The tray calls it on its interval.
 func runCheck() (notified []core.Status, err error) {
 	err = withStore(func(s *core.Store) error {
 		on, err := s.ModuleOn(core.ModuleNotifications)
-		if err != nil || !on {
-			return err
+		if err == nil && on {
+			err = s.Check(func(due []core.Status) (int, error) {
+				shown, err := send(notify.Render(due))
+				covered := notify.Covered(due, shown)
+				notified = due[:covered]
+				return covered, err
+			})
 		}
-		return s.Check(func(due []core.Status) (int, error) {
-			shown, err := send(notify.Render(due))
-			covered := notify.Covered(due, shown)
-			notified = due[:covered]
-			return covered, err
-		})
+		return errors.Join(err, digest(s)) // one channel failing never blocks the other
 	})
 	return notified, err
 }
@@ -77,6 +80,6 @@ var testNotificationCmd = &cobra.Command{
 
 func init() {
 	checkCmd.Flags().BoolVar(&checkJSON, "json", false, "print the projects notified as JSON")
-	testCmd.AddCommand(testNotificationCmd)
+	testCmd.AddCommand(testNotificationCmd, testEmailCmd)
 	rootCmd.AddCommand(checkCmd, testCmd)
 }
