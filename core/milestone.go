@@ -13,7 +13,8 @@ type Milestone struct {
 	At   time.Time
 }
 
-// AddMilestone records a milestone on project id; it counts as activity.
+// AddMilestone records a milestone on project id; it counts as activity and
+// refreshes the project's brain note.
 func (s *Store) AddMilestone(id int64, text string) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -23,7 +24,11 @@ func (s *Store) AddMilestone(id int64, text string) error {
 	res, err := s.db.Exec(`INSERT INTO milestones (workspace_id, project_id, text, created_at)
 		SELECT workspace_id, id, ?, ? FROM projects WHERE id = ? AND workspace_id = ?`,
 		text, s.now().Unix(), id, DefaultWorkspace)
-	return foundOrErr(res, err)
+	if err := foundOrErr(res, err); err != nil {
+		return err
+	}
+	s.BrainNote(id) // best effort: the milestone is saved; the next check retries the note
+	return nil
 }
 
 // Milestones returns project id's milestones, newest first.

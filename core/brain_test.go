@@ -56,7 +56,7 @@ func TestBrainNoteHasMilestonesAndLeftOffNote(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"<!-- proz:start -->", "<!-- proz:end -->", "Quiet for 3 days", "Milestone: shipped login; next: signup", "- " + t0.Format("2006-01-02") + ": shipped login; next: signup"} {
+	for _, want := range []string{"<!-- proz:start -->", "<!-- proz:end -->", "- Last activity: " + t0.Format("2006-01-02") + "\n", "Milestone: shipped login; next: signup", "- " + t0.Format("2006-01-02") + ": shipped login; next: signup"} {
 		if !strings.Contains(string(data), want) {
 			t.Errorf("note missing %q:\n%s", want, data)
 		}
@@ -155,5 +155,109 @@ func TestMarkerTextInsideContentCannotBreakTheSection(t *testing.T) {
 	data, _ := os.ReadFile(filepath.Join(brain, "app.md"))
 	if strings.Count(string(data), "<!-- proz:end -->") != 1 {
 		t.Fatalf("got:\n%s", data)
+	}
+}
+
+func TestBrainErrorsSayWhatToDo(t *testing.T) {
+	s, brain := brainAt(t, &clock{t0})
+	s.AddProject(Project{Name: "app", Path: t.TempDir()})
+	id := onlyProject(t, s).ID
+	s.SetModule(ModuleBrain, false)
+	if _, _, err := s.BrainNote(id); !errors.Is(err, ErrNoBrain) || !strings.Contains(err.Error(), "proz config brain on") {
+		t.Fatalf("off: %v", err)
+	}
+	s.SetModule(ModuleBrain, true)
+	s.AddProject(Project{Name: "web", Path: t.TempDir()})
+	os.Remove(brain)
+	err := s.SyncBrain()
+	if err == nil || strings.Count(err.Error(), "missing") != 1 {
+		t.Fatalf("a missing folder is one error, not one per project: %v", err)
+	}
+}
+
+func TestNoteChangesOnlyWithActivityAndMilestonesRefreshIt(t *testing.T) {
+	c := &clock{t0}
+	s, brain := brainAt(t, c)
+	s.AddProject(Project{Name: "app", Path: t.TempDir()})
+	s.SyncBrain()
+	note := filepath.Join(brain, "app.md")
+	before, _ := os.ReadFile(note)
+	c.t = t0.Add(5 * day)
+	s.SyncBrain()
+	if after, _ := os.ReadFile(note); string(after) != string(before) {
+		t.Fatalf("a quiet day rewrote the note:\n%s", after)
+	}
+	s.AddMilestone(onlyProject(t, s).ID, "shipped")
+	if after, _ := os.ReadFile(note); !strings.Contains(string(after), "shipped") {
+		t.Fatalf("a milestone refreshes the note:\n%s", after)
+	}
+}
+
+func TestAnEditDuringTheRewriteIsKept(t *testing.T) {
+	s, brain := brainAt(t, &clock{t0})
+	s.AddProject(Project{Name: "app", Path: t.TempDir()})
+	note := filepath.Join(brain, "app.md")
+	os.WriteFile(note, []byte("v1\n"), 0o644)
+	beforeRename = func() { os.WriteFile(note, []byte("v2, saved by the editor meanwhile\n"), 0o644) }
+	t.Cleanup(func() { beforeRename = func() {} })
+	s.SyncBrain()
+	if data, _ := os.ReadFile(note); !strings.HasPrefix(string(data), "v2") {
+		t.Fatalf("editor save lost:\n%s", data)
+	}
+}
+
+func TestABrainInsideAProjectIsNotItsActivity(t *testing.T) {
+	start := time.Now().Add(-10 * day) // real file times: the note is written now
+	c := &clock{start}
+	s := openAt(t, c)
+	project := t.TempDir()
+	brain := filepath.Join(project, "notes")
+	os.Mkdir(brain, 0o755)
+	touch(t, project, "main.go", start)
+	s.AddProject(Project{Name: "app", Path: project})
+	s.SetBrainPath(brain)
+	c.t = time.Now().Add(time.Minute)
+	s.SyncBrain()
+	if st, _ := s.Status(onlyProject(t, s).ID); !st.Stale {
+		t.Fatalf("writing the brain note made the project active: quiet %v", st.Quiet)
+	}
+}
+
+func TestAStrayMarkerPairInUserTextIsNotTheSection(t *testing.T) {
+	s, brain := brainAt(t, &clock{t0})
+	s.AddProject(Project{Name: "app", Path: t.TempDir()})
+	s.SyncBrain()
+	note := filepath.Join(brain, "app.md")
+	data, _ := os.ReadFile(note)
+	pasted := "\nhow proz marks notes:\n<!-- proz:start -->\nexample\n<!-- proz:end -->\n"
+	os.WriteFile(note, append(data, pasted...), 0o644)
+	s.AddMilestone(onlyProject(t, s).ID, "new")
+	data, _ = os.ReadFile(note)
+	if !strings.HasSuffix(string(data), pasted) || !strings.Contains(string(data), "Milestone: new") {
+		t.Fatalf("got:\n%s", data)
+	}
+}
+
+func TestADanglingSymlinkIsNeverReplaced(t *testing.T) {
+	s, brain := brainAt(t, &clock{t0})
+	s.AddProject(Project{Name: "app", Path: t.TempDir()})
+	note := filepath.Join(brain, "app.md")
+	if err := os.Symlink(filepath.Join(t.TempDir(), "gone", "app.md"), note); err != nil {
+		t.Skip(err)
+	}
+	if err := s.SyncBrain(); err == nil {
+		t.Fatal("want an error for a broken link")
+	}
+	if fi, _ := os.Lstat(note); fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("the link was replaced by a file")
+	}
+}
+
+func TestLongNamesGetAShortFileName(t *testing.T) {
+	s, _ := brainAt(t, &clock{t0})
+	s.AddProject(Project{Name: strings.Repeat("ü", 300), Path: t.TempDir()})
+	path, _, err := s.BrainNote(onlyProject(t, s).ID)
+	if err != nil || len(filepath.Base(path)) > 200 {
+		t.Fatalf("%d bytes, %v", len(filepath.Base(path)), err)
 	}
 }

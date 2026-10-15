@@ -73,6 +73,7 @@ var migrations = []string{
 
 	`ALTER TABLE projects ADD COLUMN notified_at INTEGER`, // last OS notification; one per stale period
 	`ALTER TABLE projects ADD COLUMN brain_note TEXT`,     // file name in the brain, kept across renames
+	`CREATE UNIQUE INDEX brain_notes ON projects (workspace_id, lower(brain_note))`,
 }
 
 // Open opens (creating if needed) the store in dir. now is the clock every

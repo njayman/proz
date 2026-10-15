@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // The brain is a local markdown folder. proz keeps one note per project in
@@ -20,7 +21,11 @@ const (
 )
 
 // ErrNoBrain means the brain is off or has no folder.
-var ErrNoBrain = errors.New("no brain folder: proz config brain-path <dir>")
+var ErrNoBrain = errors.New("no brain")
+
+// beforeRename runs between preparing a note and replacing it; tests use it
+// to save the note "from an editor" in that window.
+var beforeRename = func() {}
 
 func (s *Store) BrainPath() (string, error) {
 	var dir string
@@ -55,8 +60,14 @@ func (s *Store) brainDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !on || dir == "" {
-		return "", ErrNoBrain
+	if dir == "" {
+		return "", fmt.Errorf("%w folder set: proz config brain-path <dir>", ErrNoBrain)
+	}
+	if !on {
+		return "", fmt.Errorf("%w: it is switched off: proz config brain on", ErrNoBrain)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		return "", fmt.Errorf("brain folder %s is missing: %w", dir, err)
 	}
 	return dir, nil
 }
@@ -102,20 +113,25 @@ func (s *Store) BrainNote(id int64) (path, content string, err error) {
 	return path, string(data), err
 }
 
-// syncNote rewrites st's section in its note, writing only on a change.
+// syncNote rewrites st's section in its note, writing only on a change. A
+// note saved by someone else while proz prepares it is left for next time.
 func (s *Store) syncNote(dir string, st Status) (string, error) {
 	name, err := s.noteName(st.Project)
 	if err != nil {
 		return "", err
 	}
 	path := filepath.Join(dir, name)
-	if real, err := filepath.EvalSymlinks(path); err == nil {
-		path = real // a linked note is written where it lives
+	if fi, err := os.Lstat(path); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		// a linked note is written where it lives; a broken link is never replaced
+		if path, err = filepath.EvalSymlinks(path); err != nil {
+			return "", fmt.Errorf("note %s links to a missing file: %w", name, err)
+		}
 	}
 	section, err := s.brainSection(st)
 	if err != nil {
 		return "", err
 	}
+	before, _ := os.Stat(path)
 	old, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return "", err
@@ -124,34 +140,45 @@ func (s *Store) syncNote(dir string, st Status) (string, error) {
 	if bytes.Equal(updated, old) {
 		return path, nil
 	}
-	return path, writeKeepingMode(path, updated)
+	return path, writeIfUnchanged(path, updated, before)
 }
 
 // noteName is the project's note file, chosen once and kept across renames;
-// a name already used by another project gets the project id appended.
+// a name another project holds (a unique index decides, even across
+// processes) gets the project id appended.
 func (s *Store) noteName(p Project) (string, error) {
 	var name sql.NullString
-	if err := s.db.QueryRow(`SELECT brain_note FROM projects WHERE id = ? AND workspace_id = ?`, p.ID, DefaultWorkspace).Scan(&name); err != nil {
-		return "", err
+	get := func() error {
+		return s.db.QueryRow(`SELECT brain_note FROM projects WHERE id = ? AND workspace_id = ?`, p.ID, DefaultWorkspace).Scan(&name)
 	}
-	if name.Valid {
-		return name.String, nil
+	if err := get(); err != nil || name.Valid {
+		return name.String, err
 	}
 	base := slug(p.Name)
+	for len(base) > maxNoteName { // keep under file name limits, on a rune boundary
+		_, size := utf8.DecodeLastRuneInString(base)
+		base = base[:len(base)-size]
+	}
+	base = strings.TrimSuffix(base, "-")
 	if base == "" {
 		base = "project"
 	}
-	n := base + ".md"
-	var taken int
-	if err := s.db.QueryRow(`SELECT count(*) FROM projects WHERE workspace_id = ? AND lower(brain_note) = ?`, DefaultWorkspace, n).Scan(&taken); err != nil {
-		return "", err
+	for _, n := range []string{base + ".md", base + "-" + strconv.FormatInt(p.ID, 10) + ".md"} {
+		_, err := s.db.Exec(`UPDATE projects SET brain_note = ? WHERE id = ? AND workspace_id = ? AND brain_note IS NULL`, n, p.ID, DefaultWorkspace)
+		if err == nil {
+			break
+		}
+		if !strings.Contains(err.Error(), "UNIQUE") {
+			return "", err
+		}
 	}
-	if taken > 0 {
-		n = base + "-" + strconv.FormatInt(p.ID, 10) + ".md"
+	if err := get(); err != nil || !name.Valid {
+		return "", errors.Join(errors.New("no free note name"), err)
 	}
-	_, err := s.db.Exec(`UPDATE projects SET brain_note = ? WHERE id = ? AND workspace_id = ?`, n, p.ID, DefaultWorkspace)
-	return n, err
+	return name.String, nil
 }
+
+const maxNoteName = 100
 
 // markerSafe keeps a commit message or milestone quoting a marker from
 // ending the section early.
@@ -163,11 +190,12 @@ func (s *Store) brainSection(st Status) (string, error) {
 		return "", err
 	}
 	var b strings.Builder
-	b.WriteString("## proz\n\n")
 	if st.Path != "" {
 		b.WriteString("Folder: " + st.Path + "\n\n")
 	}
-	for _, l := range st.Note.Lines {
+	// The date, not "Quiet for N days", so a note changes only with activity.
+	b.WriteString("- Last activity: " + st.LastActivity.UTC().Format("2006-01-02") + "\n")
+	for _, l := range st.Note.Lines[1:] { // the first is the quiet line
 		b.WriteString("- " + l + "\n")
 	}
 	if len(ms) > 0 {
@@ -176,15 +204,19 @@ func (s *Store) brainSection(st Status) (string, error) {
 			b.WriteString("- " + m.At.UTC().Format("2006-01-02") + ": " + strings.Join(strings.Fields(m.Text), " ") + "\n")
 		}
 	}
-	return brainStart + "\n" + markerSafe.Replace(b.String()) + brainEnd, nil
+	return brainOpening + markerSafe.Replace(b.String()) + brainEnd, nil
 }
 
-// spliceSection replaces the last start marker and the first end marker
-// after it with section, or appends section when there is no such pair.
-// Only text between a start and its end is ever replaced.
+// brainOpening starts every section proz writes; a bare start marker the
+// user pasted is not one.
+const brainOpening = brainStart + "\n## proz\n\n"
+
+// spliceSection replaces the last section proz wrote, from its opening to
+// the first end marker after it, or appends section when there is none.
+// Only text inside such a section is ever replaced.
 func spliceSection(old []byte, section string) []byte {
 	s := string(old)
-	if i := strings.LastIndex(s, brainStart); i >= 0 {
+	if i := strings.LastIndex(s, brainOpening); i >= 0 {
 		if j := strings.Index(s[i:], brainEnd); j >= 0 {
 			return []byte(s[:i] + section + s[i+j+len(brainEnd):])
 		}
@@ -198,12 +230,13 @@ func spliceSection(old []byte, section string) []byte {
 	return []byte(s + section + "\n")
 }
 
-// writeKeepingMode replaces path atomically, keeping its permissions (0644
-// for a new note), so an editor never sees a half-written note.
-func writeKeepingMode(path string, data []byte) error {
+// writeIfUnchanged replaces path atomically, keeping its permissions (0644
+// for a new note), so an editor never sees a half-written note. If the note
+// changed since before was taken, it is left alone for the next sync.
+func writeIfUnchanged(path string, data []byte, before os.FileInfo) error {
 	mode := os.FileMode(0o644)
-	if fi, err := os.Stat(path); err == nil {
-		mode = fi.Mode().Perm()
+	if before != nil {
+		mode = before.Mode().Perm()
 	}
 	f, err := os.CreateTemp(filepath.Dir(path), ".proz-*.tmp")
 	if err != nil {
@@ -214,11 +247,21 @@ func writeKeepingMode(path string, data []byte) error {
 		f.Close()
 		return err
 	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
 	if err := f.Close(); err != nil {
 		return err
 	}
 	if err := os.Chmod(f.Name(), mode); err != nil {
 		return err
+	}
+	beforeRename()
+	// ponytail: a save in the instant after this check is still lost; a lock the editor honours does not exist.
+	now, err := os.Stat(path)
+	if before == nil && err == nil || before != nil && (err != nil || !now.ModTime().Equal(before.ModTime()) || now.Size() != before.Size()) {
+		return nil
 	}
 	return os.Rename(f.Name(), path)
 }
