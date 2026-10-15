@@ -135,9 +135,9 @@ proz config smtp --host smtp.gmail.com --username me@gmail.com \
 proz test email
 ```
 
-The password is read from stdin (hidden in a terminal) and saved in `smtp.json` in the config folder, readable only by you; nothing else about email is stored there. Port 587 (the default) upgrades with STARTTLS, 465 uses TLS. `proz config smtp` with no flags shows the settings without the password; flags you leave out keep their saved value. For Gmail, use an app password.
+The password is read from stdin (hidden in a terminal) and saved in `smtp.json` in the config folder, readable only by you; nothing else about email is stored there. Port 465 uses TLS; any other port (587 by default) must offer STARTTLS, so nothing is sent unencrypted except to a relay on localhost. proz refuses `smtp.json` if others can read it. `proz config smtp` with no flags shows the settings without the password; flags you leave out keep their saved value, and a new host or username needs the password again. Setting SMTP the first time switches email on; later edits leave it as it is. For Gmail, use an app password.
 
-The digest goes out on Monday by default (`proz config digest-day friday` changes it), from the tray or `proz check`. If the machine was off that day, it goes out at the next check that week. A week with nothing quiet sends nothing, and a restart never sends twice.
+The digest goes out on Monday by default (`proz config digest-day friday` changes it), from the tray or `proz check`. If the machine was off that day, it goes out at the next check that week. The first digest waits for the digest day. A week with nothing quiet sends nothing, and a restart never sends twice. A failed send is retried an hour later, not at every check, so a wrong password can't get your account locked.
 
 ### `proz config stale-days [days] [--project <name>]`
 

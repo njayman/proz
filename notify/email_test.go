@@ -38,11 +38,13 @@ func TestDigestListsEveryProjectWithFullNoteAndCommands(t *testing.T) {
 
 // fakeSMTP is a local SMTP server that accepts one message and reports what
 // it received: the AUTH line, the envelope and the data.
-func fakeSMTP(t *testing.T) (port int, got chan string) {
+func fakeSMTP(t *testing.T) (port int, got chan string) { return fakeSMTPOn(t, "127.0.0.1") }
+
+func fakeSMTPOn(t *testing.T, host string) (port int, got chan string) {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := net.Listen("tcp", host+":0")
 	if err != nil {
-		t.Fatal(err)
+		t.Skip(err)
 	}
 	t.Cleanup(func() { ln.Close() })
 	got = make(chan string, 1)
@@ -136,5 +138,20 @@ func TestEmailFailsFastWhenTheServerIsDown(t *testing.T) {
 	c := core.SMTP{Host: "127.0.0.1", Port: port, From: "me@example.com", To: "me@example.com"}
 	if err := Email(c, "s", "b", time.Now()); err == nil {
 		t.Fatal("want an error")
+	}
+}
+
+func TestEmailRefusesPlaintextToARemoteServer(t *testing.T) {
+	port, got := fakeSMTPOn(t, "127.0.0.2") // loopback, but not "localhost": stands in for a remote server
+	c := core.SMTP{Host: "127.0.0.2", Port: port, From: "me@example.com", To: "me@example.com"}
+	if err := Email(c, "s", "secret notes", time.Now()); err == nil || !strings.Contains(err.Error(), "STARTTLS") {
+		t.Fatalf("want a STARTTLS error, got %v", err)
+	}
+	select {
+	case log := <-got:
+		if strings.Contains(log, "secret notes") {
+			t.Fatal("body sent in plaintext")
+		}
+	case <-time.After(time.Second):
 	}
 }

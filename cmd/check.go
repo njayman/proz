@@ -24,17 +24,14 @@ var checkCmd = &cobra.Command{
 		"scheduler; it never repeats a notification or a digest.",
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		notified, err := runCheck()
-		if err != nil {
-			return err
-		}
+		notified, err := runCheck() // print what was shown even if a channel failed
 		if checkJSON {
-			return printJSON(contract.Nudges(notified))
+			return errors.Join(printJSON(contract.Nudges(notified)), err)
 		}
 		for _, n := range notified {
 			fmt.Printf("notified: %s\n", n.Name)
 		}
-		return nil
+		return err
 	},
 }
 

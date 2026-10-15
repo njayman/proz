@@ -8,6 +8,7 @@ import (
 	"net/mail"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"time"
 )
@@ -25,12 +26,22 @@ type SMTP struct {
 
 const smtpFile = "smtp.json"
 
+const digestRetry = time.Hour
+
 // SMTP reads the SMTP settings; ok is false when none are configured.
 func (s *Store) SMTP() (c SMTP, ok bool, err error) {
-	data, err := os.ReadFile(filepath.Join(s.dir, smtpFile))
+	path := filepath.Join(s.dir, smtpFile)
+	fi, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return c, false, nil
 	}
+	if err != nil {
+		return c, false, err
+	}
+	if runtime.GOOS != "windows" && fi.Mode().Perm()&0o077 != 0 {
+		return c, false, fmt.Errorf("%s holds a password but others can read it; run: chmod 600 %s", path, path)
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return c, false, err
 	}
@@ -96,7 +107,9 @@ func (s *Store) SetDigestDay(d time.Weekday) error {
 // stale project to deliver. A week with nothing stale is done without a
 // send. The send is claimed in the database before delivering, so the tray
 // and a cron job never both send and a restart never resends; a failed
-// delivery releases the claim to be retried on the next call.
+// delivery releases the claim to be retried an hour later. The send time
+// is a workspace setting, not local bookkeeping, so a synced workspace sends
+// one digest, not one per machine.
 func (s *Store) Digest(deliver func(stale []Status) error) error {
 	day, err := s.DigestDay()
 	if err != nil {
@@ -106,12 +119,24 @@ func (s *Store) Digest(deliver func(stale []Status) error) error {
 	back := (int(now.Weekday()) - int(day) + 7) % 7
 	week := time.Date(now.Year(), now.Month(), now.Day()-back, 0, 0, 0, 0, now.Location()).Unix()
 
+	var retry int64 // after a failed send, wait before trying again
+	err = s.db.QueryRow(`SELECT value FROM settings WHERE workspace_id = ? AND key = 'digest_retry_at'`, DefaultWorkspace).Scan(&retry)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if now.Unix() < retry {
+		return nil
+	}
+
 	var prev sql.NullString
 	err = s.db.QueryRow(`SELECT value FROM settings WHERE workspace_id = ? AND key = 'digest_sent_at'`, DefaultWorkspace).Scan(&prev)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	if sent, _ := strconv.ParseInt(prev.String, 10, 64); prev.Valid && sent >= week {
+	// A send this week, or within six days (the digest day just moved), is
+	// this week's digest. The very first one waits for the digest day itself.
+	before := min(week, now.Add(-6*24*time.Hour).Unix())
+	if sent, _ := strconv.ParseInt(prev.String, 10, 64); prev.Valid && sent >= before || !prev.Valid && back != 0 {
 		return nil
 	}
 	stale, err := s.Nudges()
@@ -120,7 +145,7 @@ func (s *Store) Digest(deliver func(stale []Status) error) error {
 	}
 	res, err := s.db.Exec(`INSERT INTO settings (workspace_id, key, value) VALUES (?, 'digest_sent_at', ?)
 		ON CONFLICT (workspace_id, key) DO UPDATE SET value = excluded.value WHERE CAST(value AS INTEGER) < ?`,
-		DefaultWorkspace, now.Unix(), week)
+		DefaultWorkspace, now.Unix(), before)
 	if err != nil {
 		return err
 	}
@@ -131,14 +156,24 @@ func (s *Store) Digest(deliver func(stale []Status) error) error {
 		return nil
 	}
 	derr := deliver(stale)
-	if derr != nil {
+	if derr == nil {
+		return nil
+	}
+	// Release the claim, but wait an hour: retrying a wrong password every
+	// tray tick could get the account locked.
+	err = s.inTx(func(tx execer) error {
 		var err error
 		if prev.Valid {
-			_, err = s.db.Exec(`UPDATE settings SET value = ? WHERE workspace_id = ? AND key = 'digest_sent_at'`, prev.String, DefaultWorkspace)
+			_, err = tx.Exec(`UPDATE settings SET value = ? WHERE workspace_id = ? AND key = 'digest_sent_at'`, prev.String, DefaultWorkspace)
 		} else {
-			_, err = s.db.Exec(`DELETE FROM settings WHERE workspace_id = ? AND key = 'digest_sent_at'`, DefaultWorkspace)
+			_, err = tx.Exec(`DELETE FROM settings WHERE workspace_id = ? AND key = 'digest_sent_at'`, DefaultWorkspace)
 		}
-		return errors.Join(derr, err)
-	}
-	return nil
+		if err != nil {
+			return err
+		}
+		_, err = tx.Exec(`INSERT OR REPLACE INTO settings (workspace_id, key, value) VALUES (?, 'digest_retry_at', ?)`,
+			DefaultWorkspace, now.Add(digestRetry).Unix())
+		return err
+	})
+	return errors.Join(derr, err)
 }

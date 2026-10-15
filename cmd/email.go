@@ -45,10 +45,11 @@ var smtpCmd = &cobra.Command{
 	Use:   "smtp",
 	Short: "Show or set the SMTP server for the weekly email digest",
 	Long: "Show or set the SMTP server for the weekly email digest. Setting it switches\n" +
-		"email on. Flags not given keep their saved value. The password is read from\n" +
+		"email on the first time. Flags not given keep their saved value; a new host\n" +
+		"or username needs the password again. The password is read from\n" +
 		"stdin with --password-stdin, never from a flag, and is saved in smtp.json in\n" +
-		"the config folder, readable only by you. Port 465 uses TLS; other ports use\n" +
-		"STARTTLS when the server offers it.",
+		"the config folder, readable only by you. Port 465 uses TLS; other ports must\n" +
+		"offer STARTTLS (plaintext is allowed only to localhost).",
 	Example: "  proz config smtp --host smtp.gmail.com --username me@gmail.com \\\n" +
 		"    --from me@gmail.com --to me@gmail.com --password-stdin",
 	Args: cobra.NoArgs,
@@ -85,6 +86,9 @@ var smtpCmd = &cobra.Command{
 			if f.Changed("port") {
 				c.Port = smtpFlags.Port
 			}
+			if ok && c.Password != "" && !smtpPasswordStdin && (f.Changed("host") || f.Changed("username")) {
+				return errors.New("a new host or username needs its password again: add --password-stdin")
+			}
 			if smtpPasswordStdin {
 				if c.Password, err = readPassword(); err != nil {
 					return err
@@ -92,6 +96,10 @@ var smtpCmd = &cobra.Command{
 			}
 			if err := s.SetSMTP(c); err != nil {
 				return err
+			}
+			if ok { // an edit keeps email as it was
+				fmt.Println("Saved.")
+				return nil
 			}
 			if err := s.SetModule(core.ModuleEmail, true); err != nil {
 				return err

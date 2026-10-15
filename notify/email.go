@@ -42,9 +42,8 @@ func Digest(stale []core.Status) (subject, body string) {
 
 const smtpTimeout = 30 * time.Second
 
-// Email sends one plain-text message. Port 465 speaks TLS from the start;
-// any other port upgrades with STARTTLS when the server offers it. Password
-// auth is refused over an unencrypted connection, except to localhost.
+// Email sends one plain-text message, always encrypted except to localhost.
+// Port 465 speaks TLS from the start; any other port must offer STARTTLS.
 // Every step is bounded, so a dead server never hangs the tray.
 func Email(c core.SMTP, subject, body string, now time.Time) error {
 	from, err := mail.ParseAddress(c.From)
@@ -69,9 +68,13 @@ func Email(c core.SMTP, subject, body string, now time.Time) error {
 		return fmt.Errorf("sending email: %w", err)
 	}
 	defer cl.Close()
-	if ok, _ := cl.Extension("STARTTLS"); ok && c.Port != 465 {
-		if err := cl.StartTLS(&tls.Config{ServerName: c.Host}); err != nil {
-			return fmt.Errorf("sending email: %w", err)
+	if c.Port != 465 {
+		if ok, _ := cl.Extension("STARTTLS"); ok {
+			if err := cl.StartTLS(&tls.Config{ServerName: c.Host}); err != nil {
+				return fmt.Errorf("sending email: %w", err)
+			}
+		} else if !localhost[c.Host] {
+			return fmt.Errorf("sending email: %s does not offer STARTTLS; use port 465 for TLS", c.Host)
 		}
 	}
 	if c.Username != "" {
@@ -97,5 +100,10 @@ func Email(c core.SMTP, subject, body string, now time.Time) error {
 	if err := w.Close(); err != nil {
 		return fmt.Errorf("sending email: %w", err)
 	}
-	return cl.Quit()
+	cl.Quit() // the server has the message; a failed goodbye must not resend it
+	return nil
 }
+
+// localhost is where a plaintext connection never leaves the machine, such
+// as a local relay.
+var localhost = map[string]bool{"localhost": true, "127.0.0.1": true, "::1": true}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -60,7 +61,7 @@ func TestDigestCatchesUpAfterTheDayAndSkipsQuietWeeks(t *testing.T) {
 	s := openAt(t, c)
 	s.AddProject(Project{Name: "app", Path: t.TempDir()})
 
-	c.t = monday.Add(-4 * 24 * time.Hour) // Thursday after t0's week Monday: nothing stale
+	c.t = monday.Add(-7 * 24 * time.Hour) // the Monday after t0: nothing stale
 	if got := digests(t, s, nil); got != nil {
 		t.Fatalf("nothing stale: got %v", got)
 	}
@@ -102,6 +103,10 @@ func TestFailedDigestIsRetriedAndSentStateSurvivesReopen(t *testing.T) {
 	c.t = monday
 	boom := errors.New("smtp down")
 	digests(t, s, boom)
+	if got := digests(t, s, nil); got != nil {
+		t.Fatalf("a failure backs off before retrying: got %v", got)
+	}
+	c.t = monday.Add(time.Hour)
 	if got := digests(t, s, nil); len(got) != 1 {
 		t.Fatalf("retry after failure: got %v", got)
 	}
@@ -138,5 +143,49 @@ func TestSMTPConfigIsOwnerOnlyAndEnablesEmail(t *testing.T) {
 	}
 	if err := s.SetModule(ModuleEmail, true); err != nil {
 		t.Fatalf("configured: %v", err)
+	}
+}
+
+func TestFirstDigestWaitsForTheDigestDay(t *testing.T) {
+	c := &clock{t0}
+	s := openAt(t, c)
+	s.AddProject(Project{Name: "app", Path: t.TempDir()})
+	c.t = monday.Add(2 * 24 * time.Hour) // email set up on a Wednesday: no digest yet
+	if got := digests(t, s, nil); got != nil {
+		t.Fatalf("wednesday, never sent: got %v", got)
+	}
+	c.t = monday.Add(7 * 24 * time.Hour)
+	if got := digests(t, s, nil); len(got) != 1 {
+		t.Fatalf("next monday: got %v", got)
+	}
+}
+
+func TestChangingTheDigestDayNeverSendsTwiceInAWeek(t *testing.T) {
+	c := &clock{t0}
+	s := openAt(t, c)
+	s.AddProject(Project{Name: "app", Path: t.TempDir()})
+	c.t = monday
+	digests(t, s, nil)
+	c.t = monday.Add(24 * time.Hour)
+	s.SetDigestDay(time.Tuesday)
+	if got := digests(t, s, nil); got != nil {
+		t.Fatalf("sent yesterday: got %v", got)
+	}
+	c.t = monday.Add(8 * 24 * time.Hour) // the next Tuesday
+	if got := digests(t, s, nil); len(got) != 1 {
+		t.Fatalf("next tuesday: got %v", got)
+	}
+}
+
+func TestLooseSMTPFileIsRefused(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no unix permissions")
+	}
+	dir := t.TempDir()
+	s := open(t, dir)
+	s.SetSMTP(SMTP{Host: "h", Port: 587, Password: "pw", From: "a@b.c", To: "a@b.c"})
+	os.Chmod(filepath.Join(dir, "smtp.json"), 0o644)
+	if _, _, err := s.SMTP(); err == nil {
+		t.Fatal("a password file others can read must be refused")
 	}
 }

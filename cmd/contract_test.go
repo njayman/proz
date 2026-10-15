@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -507,6 +508,32 @@ func TestEmailDigestIsConfiguredThenSentWeeklyByCheck(t *testing.T) {
 	run(t, "test", "email")
 	if len(sent) != 2 {
 		t.Fatalf("test email: %v", sent)
+	}
+
+	if execute("config", "smtp", "--host", "evil.example.com") == nil {
+		t.Fatal("a new host must not get the saved password")
+	}
+	run(t, "config", "email", "off")
+	run(t, "config", "smtp", "--to", "other@example.com")
+	if out := run(t, "config", "email"); out != "off\n" {
+		t.Fatalf("editing SMTP keeps email off: got %q", out)
+	}
+	run(t, "config", "email", "on")
+
+	// email failing must not hide the notifications already shown
+	now = func() time.Time { return t0.Add(14 * 24 * time.Hour) }
+	run(t, "milestone", "web", "back at it") // a new stale period to notify about
+	now = func() time.Time { return t0.Add(25 * 24 * time.Hour) }
+	sendEmail = func(core.SMTP, string, string, time.Time) error { return errors.New("smtp down") }
+	r, w, _ := os.Pipe()
+	stdout := os.Stdout
+	os.Stdout = w
+	err := execute("check", "--json")
+	os.Stdout = stdout
+	w.Close()
+	out, _ := io.ReadAll(r)
+	if err == nil || !strings.Contains(string(out), `"name": "web"`) {
+		t.Fatalf("check --json with email down: err %v, out %q", err, out)
 	}
 
 	if out := run(t, "config", "digest-day"); out != "monday\n" {
