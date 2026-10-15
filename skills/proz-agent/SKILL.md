@@ -91,7 +91,7 @@ When the user later registers a folder named like the idea (`habit-tracker-that-
 
 ## Notifications
 
-`proz check` shows the user an OS notification for each project that just went quiet, once per quiet stretch; it runs from cron or the tray, so you rarely need it. `proz check --json` prints the projects it notified (same fields as `nudges`). `proz config notifications|tray|email|brain [on|off]` shows or switches a module; change one only when the user asks. `proz test notification` shows a sample. `proz tray` is the user's background tray icon; never start it yourself, and change `proz tray autostart on|off` only when asked.
+`proz check` shows the user an OS notification for each project that just went quiet, once per quiet stretch, and sends the weekly email digest when it is due; it runs from cron or the tray, so you rarely need it. `proz check --json` prints the projects it notified (same fields as `nudges`). `proz config notifications|tray|email|brain [on|off]` shows or switches a module; change one only when the user asks. `proz test notification` shows a sample and `proz test email` sends one. Email needs SMTP: the user runs `proz config smtp --host ... --from ... --to ... --password-stdin` themselves; never ask for, handle or pass their password. `proz config smtp` (no flags) shows the settings without the password, and `proz config digest-day [weekday]` shows or sets the digest day (Monday by default). `proz tray` is the user's background tray icon; never start it yourself, and change `proz tray autostart on|off` only when asked.
 
 ## Register a project
 

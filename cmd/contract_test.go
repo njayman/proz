@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/njayman/proz/core"
 	"github.com/njayman/proz/notify"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -460,5 +462,88 @@ func TestCheckDeliversOnceAndRespectsTheSwitch(t *testing.T) {
 	}
 	if execute("config", "notifications", "maybe") == nil {
 		t.Fatal("only on or off")
+	}
+}
+
+func TestEmailDigestIsConfiguredThenSentWeeklyByCheck(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
+	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": "/web"}]`), 0644)
+	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC) // a Thursday
+	var sent []string                                   // subjects
+	t.Cleanup(func() { now = time.Now; send = notify.Send; sendEmail = notify.Email; stdin = bufio.NewReader(os.Stdin) })
+	send = func(m []notify.Message) (int, error) { return len(m), nil }
+	sendEmail = func(c core.SMTP, subject, body string, _ time.Time) error {
+		if c.Password != "s3cret" || !strings.Contains(body, "proz snooze ") {
+			t.Errorf("smtp %+v, body %q", c, body)
+		}
+		sent = append(sent, subject)
+		return nil
+	}
+	now = func() time.Time { return t0 }
+	run(t, "list", "--json")
+
+	if execute("config", "email", "on") == nil {
+		t.Fatal("email must stay off until SMTP is configured")
+	}
+	if execute("test", "email") == nil {
+		t.Fatal("test email needs SMTP")
+	}
+	stdin = bufio.NewReader(strings.NewReader("s3cret\n"))
+	run(t, "config", "smtp", "--host", "smtp.example.com", "--username", "me", "--from", "me@example.com", "--to", "me@example.com", "--password-stdin")
+	if out := run(t, "config", "email"); out != "on\n" {
+		t.Fatalf("configuring SMTP switches email on: got %q", out)
+	}
+	if out := run(t, "config", "smtp"); !strings.Contains(out, "smtp.example.com:587") || strings.Contains(out, "s3cret") {
+		t.Fatalf("show smtp without the password: got %q", out)
+	}
+
+	now = func() time.Time { return t0.Add(11 * 24 * time.Hour) } // Monday, web stale
+	run(t, "check")
+	run(t, "check")
+	if len(sent) != 1 || sent[0] != "proz: web went quiet" {
+		t.Fatalf("one digest a week: %v", sent)
+	}
+	run(t, "test", "email")
+	if len(sent) != 2 {
+		t.Fatalf("test email: %v", sent)
+	}
+
+	if execute("config", "smtp", "--host", "evil.example.com") == nil {
+		t.Fatal("a new host must not get the saved password")
+	}
+	run(t, "config", "email", "off")
+	run(t, "config", "smtp", "--to", "other@example.com")
+	if out := run(t, "config", "email"); out != "off\n" {
+		t.Fatalf("editing SMTP keeps email off: got %q", out)
+	}
+	run(t, "config", "email", "on")
+
+	// email failing must not hide the notifications already shown
+	now = func() time.Time { return t0.Add(14 * 24 * time.Hour) }
+	run(t, "milestone", "web", "back at it") // a new stale period to notify about
+	now = func() time.Time { return t0.Add(25 * 24 * time.Hour) }
+	sendEmail = func(core.SMTP, string, string, time.Time) error { return errors.New("smtp down") }
+	r, w, _ := os.Pipe()
+	stdout := os.Stdout
+	os.Stdout = w
+	err := execute("check", "--json")
+	os.Stdout = stdout
+	w.Close()
+	out, _ := io.ReadAll(r)
+	if err == nil || !strings.Contains(string(out), `"name": "web"`) {
+		t.Fatalf("check --json with email down: err %v, out %q", err, out)
+	}
+
+	if out := run(t, "config", "digest-day"); out != "monday\n" {
+		t.Fatalf("default digest day: got %q", out)
+	}
+	run(t, "config", "digest-day", "Friday")
+	if out := run(t, "config", "digest-day"); out != "friday\n" {
+		t.Fatalf("digest day: got %q", out)
+	}
+	if execute("config", "digest-day", "someday") == nil {
+		t.Fatal("not a weekday")
 	}
 }
