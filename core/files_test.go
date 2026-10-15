@@ -171,7 +171,7 @@ func TestWalkIsBoundedByEntriesNotJustFiles(t *testing.T) {
 		os.Mkdir(filepath.Join(dir, fmt.Sprintf("d%05d", i)), 0755)
 	}
 	touch(t, dir, "zzz-last.txt", t0) // sorts after every folder: past the bound
-	if w := walkNewest(dir, time.Now(), ""); !w.when.IsZero() {
+	if w := walkNewest(dir, time.Now(), nil); !w.when.IsZero() {
 		t.Fatalf("the walk should stop at maxWalk entries, got %v", w.when)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -74,7 +75,7 @@ func TestToolNamesAreTheContract(t *testing.T) {
 		}
 	}
 	slices.Sort(names)
-	want := []string{"capture_idea", "get_project", "list_nudges", "list_projects", "record_milestone"}
+	want := []string{"capture_idea", "get_project", "list_nudges", "list_projects", "read_brain_note", "record_milestone"}
 	if !reflect.DeepEqual(names, want) {
 		t.Fatalf("got %v", names)
 	}
@@ -153,5 +154,30 @@ func TestProjectArgumentsAreValidated(t *testing.T) {
 	}
 	if res := call(t, cs, "capture_idea", map[string]any{"text": " "}, nil); !res.IsError {
 		t.Error("blank idea: want a tool error")
+	}
+}
+
+func TestReadBrainNote(t *testing.T) {
+	now := t0
+	cs, dir := connect(t, &now)
+	brain := t.TempDir()
+	s, _ := core.Open(dir, func() time.Time { return t0 })
+	s.AddProject(core.Project{Name: "web", Path: t.TempDir()})
+	s.Close()
+
+	if res := call(t, cs, "read_brain_note", map[string]any{"project": "web"}, nil); !res.IsError {
+		t.Fatal("no brain configured must be an error")
+	}
+	s, _ = core.Open(dir, func() time.Time { return t0 })
+	s.SetBrainPath(brain)
+	s.Close()
+	os.WriteFile(filepath.Join(brain, "web.md"), []byte("mine\n"), 0o644)
+	var got map[string]any
+	call(t, cs, "read_brain_note", map[string]any{"project": "web"}, &got)
+	if k := keys(got); !reflect.DeepEqual(k, []string{"content", "path"}) || got["path"] != filepath.Join(brain, "web.md") {
+		t.Fatalf("read_brain_note: %v", got)
+	}
+	if c := got["content"].(string); !strings.HasPrefix(c, "mine\n") || !strings.Contains(c, "<!-- proz:start -->") {
+		t.Fatalf("content: %q", c)
 	}
 }

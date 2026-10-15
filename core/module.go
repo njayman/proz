@@ -48,6 +48,11 @@ func (s *Store) SetModule(m Module, on bool) error {
 			return errors.Join(errors.New("configure SMTP first: proz config smtp"), err)
 		}
 	}
+	if m == ModuleBrain && on {
+		if dir, err := s.BrainPath(); err != nil || dir == "" {
+			return errors.Join(errors.New("set a brain folder first: proz config brain-path <dir>"), err)
+		}
+	}
 	v := "off"
 	if on {
 		v = "on"

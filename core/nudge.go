@@ -158,7 +158,12 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 	}
 
 	now := s.now()
-	store := resolve(s.dir)
+	ignore := []string{resolve(s.dir)} // proz's own writes are not the user's activity
+	if brain, err := s.BrainPath(); err != nil {
+		return nil, err
+	} else if brain != "" {
+		ignore = append(ignore, resolve(brain))
+	}
 	out := make([]Status, 0, len(found))
 	for _, r := range found {
 		st := r.st
@@ -175,7 +180,7 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 		}
 		var work workState
 		if st.Path != "" && !missing {
-			work = readWork(st.Path, now, store)
+			work = readWork(st.Path, now, ignore)
 		}
 		if work.when.After(st.LastActivity) {
 			st.LastActivity = work.when

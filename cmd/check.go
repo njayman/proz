@@ -37,7 +37,8 @@ var checkCmd = &cobra.Command{
 
 // runCheck notifies about projects that just went quiet, if notifications
 // are on, and returns those it notified; then sends the weekly digest if
-// email is on and it is due. The tray calls it on its interval.
+// email is on and it is due, and mirrors notes into the brain if it is on.
+// The tray calls it on its interval.
 func runCheck() (notified []core.Status, err error) {
 	err = withStore(func(s *core.Store) error {
 		on, err := s.ModuleOn(core.ModuleNotifications)
@@ -49,7 +50,7 @@ func runCheck() (notified []core.Status, err error) {
 				return covered, err
 			})
 		}
-		return errors.Join(err, digest(s)) // one channel failing never blocks the other
+		return errors.Join(err, digest(s), s.SyncBrain()) // one channel failing never blocks the others
 	})
 	return notified, err
 }

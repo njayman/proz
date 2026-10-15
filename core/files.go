@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -31,13 +32,13 @@ type workState struct {
 // readWork reads work in progress in dir as of now: in a git repository the
 // files git reports as changed, new or deleted; otherwise a bounded walk.
 // Times after now (clock skew, extracted archives) and anything under the
-// proz store folder never count.
+// folders in ignore (the proz store, the brain) never count.
 // ponytail: --untracked-files=all lists every file of an untracked, unignored dependency folder before it is skipped.
-func readWork(dir string, now time.Time, store string) (w workState) {
+func readWork(dir string, now time.Time, ignore []string) (w workState) {
 	// one call: the repository root, then dir's path inside it
 	out, err := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel", "--show-prefix").Output()
 	if err != nil {
-		return walkNewest(dir, now, store)
+		return walkNewest(dir, now, ignore)
 	}
 	top, prefix, _ := strings.Cut(strings.TrimRight(string(out), "\n"), "\n")
 	cmd := exec.Command("git", "-C", dir, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".")
@@ -56,7 +57,7 @@ func readWork(dir string, now time.Time, store string) (w workState) {
 			i++ // a rename or copy is followed by its original path
 		}
 		path := filepath.Join(top, filepath.FromSlash(e[3:])) // e[3:] is relative to the repository root
-		if skipped(strings.TrimPrefix(e[3:], prefix)) || within(path, store) {
+		if skipped(strings.TrimPrefix(e[3:], prefix)) || slices.ContainsFunc(ignore, func(d string) bool { return within(path, d) }) {
 			continue
 		}
 		w.uncommitted++
@@ -89,7 +90,7 @@ func skipped(rel string) bool {
 	return false
 }
 
-func walkNewest(dir string, now time.Time, store string) (w workState) {
+func walkNewest(dir string, now time.Time, ignore []string) (w workState) {
 	seen := 0
 	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if seen++; seen > maxWalk {
@@ -99,7 +100,7 @@ func walkNewest(dir string, now time.Time, store string) (w workState) {
 			return nil // unreadable: skip, keep walking
 		}
 		if d.IsDir() {
-			if path != dir && (skipDirs[d.Name()] || path == store) {
+			if path != dir && (skipDirs[d.Name()] || slices.Contains(ignore, path)) {
 				return filepath.SkipDir
 			}
 			return nil
