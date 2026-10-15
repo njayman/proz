@@ -134,6 +134,22 @@ func New(open func() (*core.Store, error), version string) *mcp.Server {
 		})
 		return nil, out, err
 	})
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "read_brain_note",
+		Description: "Read a project's note from the user's brain (a local markdown folder): proz's section with the left-off note and milestones, " +
+			"plus anything the user wrote around it. A local file read, no network. Fails if the user has not set a brain folder.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, in Target) (*mcp.CallToolResult, contract.BrainNote, error) {
+		var out contract.BrainNote
+		err := with(func(st *core.Store) error {
+			p, err := resolve(st, in)
+			if err != nil {
+				return err
+			}
+			out.Path, out.Content, err = st.BrainNote(p.ID)
+			return err
+		})
+		return nil, out, err
+	})
 	return s
 }
 

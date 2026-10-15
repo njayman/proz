@@ -547,3 +547,43 @@ func TestEmailDigestIsConfiguredThenSentWeeklyByCheck(t *testing.T) {
 		t.Fatal("not a weekday")
 	}
 }
+
+func TestBrainIsConfiguredReadAndSyncedByCheck(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
+	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": "/web"}]`), 0644)
+	t.Cleanup(func() { send = notify.Send })
+	send = func(m []notify.Message) (int, error) { return len(m), nil }
+	brain := t.TempDir()
+
+	if execute("config", "brain", "on") == nil {
+		t.Fatal("brain stays off until a folder is set")
+	}
+	if execute("brain", "web") == nil {
+		t.Fatal("reading with no brain must fail")
+	}
+	if out := run(t, "config", "brain-path"); out != "not set\n" {
+		t.Fatalf("unset: %q", out)
+	}
+	run(t, "config", "brain-path", brain)
+	if out := run(t, "config", "brain-path"); out != brain+"\n" {
+		t.Fatalf("brain-path: %q", out)
+	}
+	if out := run(t, "config", "brain"); out != "on\n" {
+		t.Fatalf("setting a folder switches the brain on: %q", out)
+	}
+
+	run(t, "check")
+	if _, err := os.Stat(filepath.Join(brain, "web.md")); err != nil {
+		t.Fatalf("check mirrors notes: %v", err)
+	}
+	var note struct{ Path, Content string }
+	json.Unmarshal([]byte(run(t, "brain", "web", "--json")), &note)
+	if note.Path != filepath.Join(brain, "web.md") || !strings.Contains(note.Content, "<!-- proz:start -->") {
+		t.Fatalf("brain --json: %+v", note)
+	}
+	if out := run(t, "brain", "web"); out != note.Content {
+		t.Fatalf("brain prints the note: %q", out)
+	}
+}

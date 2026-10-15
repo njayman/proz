@@ -72,6 +72,7 @@ var migrations = []string{
 	`ALTER TABLE projects ADD COLUMN snoozed_at INTEGER`, // a snooze covers only the stale period it was set in
 
 	`ALTER TABLE projects ADD COLUMN notified_at INTEGER`, // last OS notification; one per stale period
+	`ALTER TABLE projects ADD COLUMN brain_note TEXT`,     // file name in the brain, kept across renames
 }
 
 // Open opens (creating if needed) the store in dir. now is the clock every

@@ -64,3 +64,10 @@ func NewStatus(st core.Status, milestones []core.Milestone) Status {
 	}
 	return out
 }
+
+// BrainNote is a project's note in the brain, as 'proz brain --json' and the
+// read_brain_note tool return it: the whole file, the user's text included.
+type BrainNote struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+}

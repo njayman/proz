@@ -109,11 +109,11 @@ Release binaries include the tray. Building yourself: `go build -tags tray .` (o
 
 ### `proz mcp`
 
-Serves proz to an agent over MCP on stdio, as a child process with no network listener. Tools: `list_projects`, `get_project`, `record_milestone`, `capture_idea` and `list_nudges`, returning the same fields as the `--json` commands. The proz Claude Code plugin registers it; for other clients, configure the command `proz mcp`.
+Serves proz to an agent over MCP on stdio, as a child process with no network listener. Tools: `list_projects`, `get_project`, `record_milestone`, `capture_idea`, `list_nudges` and `read_brain_note`, returning the same fields as the `--json` commands. The proz Claude Code plugin registers it; for other clients, configure the command `proz mcp`.
 
 ### `proz check [--json]`
 
-Runs one check: shows an OS notification for each project that just went quiet, at most once per quiet stretch (a snooze ending counts as a new one), and sends the weekly email digest when it is due. Four or more at once collapse into one summary. Safe to run often; it never repeats itself. Without the tray, schedule it instead, for example with cron:
+Runs one check: shows an OS notification for each project that just went quiet, at most once per quiet stretch (a snooze ending counts as a new one), sends the weekly email digest when it is due, and refreshes the brain notes. Four or more at once collapse into one summary. Safe to run often; it never repeats itself. Without the tray, schedule it instead, for example with cron:
 
 ```cron
 */30 * * * * proz check
@@ -124,6 +124,10 @@ On Linux the notification goes through `notify-send`, which needs your desktop s
 ### `proz config notifications|tray|email|brain [on|off]`
 
 Shows or switches a module. Notifications are on by default; the tray, email and brain stay off until you enable or configure them.
+
+### `proz config brain-path [dir]` and `proz brain [project] [--json]`
+
+The brain is a local markdown folder, such as an Obsidian vault. Once you set it, proz keeps one note per project there (`habit-tracker.md`) with its left-off note and milestones, refreshed on every check. proz only rewrites the part between `<!-- proz:start -->` and `<!-- proz:end -->`; write anything you like around it. A note keeps its file name if you rename the project, and an existing note with that name is used, not replaced. `proz brain` prints a project's note (`--json` gives `path` and `content`). Without a brain folder, everything else works as before.
 
 ### `proz config smtp` and `proz config digest-day [weekday]`
 
