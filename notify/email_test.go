@@ -155,3 +155,28 @@ func TestEmailRefusesPlaintextToARemoteServer(t *testing.T) {
 	case <-time.After(time.Second):
 	}
 }
+
+func TestEveryEmailHasAUniqueMessageID(t *testing.T) {
+	ids := map[string]bool{}
+	for range 2 {
+		port, got := fakeSMTP(t)
+		c := core.SMTP{Host: "127.0.0.1", Port: port, From: "proz <me@example.com>", To: "me@example.com"}
+		if err := Email(c, "s", "b", time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		log := <-got
+		data := log[strings.Index(log, "RCPT"):]
+		msg, err := mail.ReadMessage(strings.NewReader(data[strings.Index(data, "\n")+1:]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		id := msg.Header.Get("Message-ID")
+		if !strings.HasPrefix(id, "<") || !strings.HasSuffix(id, "@example.com>") || len(id) < len("<12345678@example.com>") {
+			t.Fatalf("Message-ID %q", id)
+		}
+		ids[id] = true
+	}
+	if len(ids) != 2 {
+		t.Fatal("Message-ID repeats")
+	}
+}
