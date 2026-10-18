@@ -131,7 +131,7 @@ The brain is a local markdown folder, such as an Obsidian vault. Once you set it
 
 ### `proz config smtp` and `proz config digest-day [weekday]`
 
-Once a week proz emails you every quiet project with its full left-off note and the exact `proz resume`, `snooze` and `drop` commands. Email stays off until you set an SMTP server:
+Once a week proz emails you every quiet project with its full left-off note and the exact `proz resume`, `snooze` and `drop` commands. It is a simple HTML email with a plain-text copy for clients that prefer it; it loads nothing from the network, so there are no images or tracking. Email stays off until you set an SMTP server:
 
 ```bash
 proz config smtp --host smtp.gmail.com --username me@gmail.com \
