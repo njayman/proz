@@ -51,7 +51,7 @@ var snoozeCmd = &cobra.Command{
 		"--until snoozes to the start of a local date instead.",
 	Args: cobra.MaximumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if snoozeUntil != "" {
+		if cmd.Flags().Changed("until") {
 			return snoozeToDate(args, snoozeUntil)
 		}
 		days := 7
@@ -84,18 +84,31 @@ func snoozeToDate(args []string, date string) error {
 	}
 	if len(args) == 1 {
 		if _, err := strconv.Atoi(args[0]); err == nil {
-			if _, err := findProject(args[0]); err != nil { // a number that is not a project's name is days
-				return errors.New("give days or --until, not both")
+			if _, err := findProject(args[0]); err != nil {
+				return fmt.Errorf("project %q not found; --until replaces days", args[0])
 			}
 		}
 	}
-	until, err := time.ParseInLocation(time.DateOnly, date, now().Location())
+	until, err := startOfDay(date, now().Location())
 	if err != nil {
-		return fmt.Errorf("--until wants a date like 2026-11-09, got %q", date)
+		return err
 	}
 	return respond(args, func(s *core.Store, id int64) error {
 		return s.SnoozeUntil(id, until)
 	}, "Snoozed '%s' until "+until.Format("Mon 2 Jan 2006")+".")
+}
+
+// startOfDay is the first moment of a YYYY-MM-DD date in loc. Where a DST
+// change skips midnight, Go may land on the day before; step into the day.
+func startOfDay(date string, loc *time.Location) (time.Time, error) {
+	t, err := time.ParseInLocation(time.DateOnly, date, loc)
+	if err != nil {
+		return t, fmt.Errorf("--until wants a date like 2026-11-09, got %q", date)
+	}
+	for t.Format(time.DateOnly) != date {
+		t = t.Add(time.Hour)
+	}
+	return t, nil
 }
 
 var dropCmd = &cobra.Command{

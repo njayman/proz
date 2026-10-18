@@ -654,6 +654,7 @@ func TestSnoozeUntilADate(t *testing.T) {
 		{"snooze", "web", "--until", "2200-01-01"}, // over 100 years
 		{"snooze", "web", "--until", "next week"},
 		{"snooze", "web", "3", "--until", "2026-11-09"},
+		{"snooze", "web", "--until", ""}, // an empty $DATE must not fall back to 7 days
 	} {
 		if execute(bad...) == nil {
 			t.Errorf("%v: want an error", bad)
@@ -667,5 +668,23 @@ func TestSnoozeUntilADate(t *testing.T) {
 	}
 	if got := until(); got != "2026-11-09T00:00:00Z" {
 		t.Fatalf("snoozed until %q, want the start of that day", got)
+	}
+}
+
+func TestSnoozeUntilNamesAMissingProject(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := execute("snooze", "3", "--until", "2026-11-09"); err == nil || !strings.Contains(err.Error(), `"3" not found`) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestStartOfDaySurvivesAMissingMidnight(t *testing.T) {
+	loc, err := time.LoadLocation("America/Sao_Paulo") // clocks jumped from 00:00 to 01:00 on 2018-11-04
+	if err != nil {
+		t.Skip(err)
+	}
+	got, err := startOfDay("2018-11-04", loc)
+	if err != nil || got.Format(time.DateOnly) != "2018-11-04" {
+		t.Fatalf("got %v, %v", got, err)
 	}
 }
