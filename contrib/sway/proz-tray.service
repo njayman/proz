@@ -1,0 +1,12 @@
+# proz tray as a systemd user service, started by sway (see proz.conf).
+# Install: cp proz-tray.service ~/.config/systemd/user/ && systemctl --user daemon-reload
+# Exit 0 means 'proz config tray off' or Quit from the menu: it stays stopped.
+[Unit]
+Description=proz tray: nudges about projects that went quiet
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+ExecStart=%h/.local/bin/proz tray
+Restart=on-failure
+RestartSec=10
