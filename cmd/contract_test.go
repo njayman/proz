@@ -479,11 +479,11 @@ func TestEmailDigestIsConfiguredThenSentWeeklyByCheck(t *testing.T) {
 		stdin = bufio.NewReader(os.Stdin)
 	})
 	send = func(m []notify.Message) (int, error) { return len(m), nil }
-	sendEmail = func(c core.SMTP, subject, body string, _ time.Time) error {
-		if c.Password != "s3cret" || !strings.Contains(body, "proz snooze ") {
-			t.Errorf("smtp %+v, body %q", c, body)
+	sendEmail = func(c core.SMTP, m notify.Mail, _ time.Time) error {
+		if c.Password != "s3cret" || !strings.Contains(m.Text, "proz snooze ") || !strings.Contains(m.HTML, "proz snooze ") {
+			t.Errorf("smtp %+v, mail %+v", c, m)
 		}
-		sent = append(sent, subject)
+		sent = append(sent, m.Subject)
 		return nil
 	}
 	now = func() time.Time { return t0 }
@@ -529,7 +529,7 @@ func TestEmailDigestIsConfiguredThenSentWeeklyByCheck(t *testing.T) {
 	now = func() time.Time { return t0.Add(14 * 24 * time.Hour) }
 	run(t, "milestone", "web", "back at it") // a new stale period to notify about
 	now = func() time.Time { return t0.Add(25 * 24 * time.Hour) }
-	sendEmail = func(core.SMTP, string, string, time.Time) error { return errors.New("smtp down") }
+	sendEmail = func(core.SMTP, notify.Mail, time.Time) error { return errors.New("smtp down") }
 	r, w, _ := os.Pipe()
 	stdout := os.Stdout
 	os.Stdout = w

@@ -31,8 +31,7 @@ func digest(s *core.Store) error {
 		return errors.New("email is on but SMTP is not configured: proz config smtp")
 	}
 	return s.Digest(func(stale []core.Status) error {
-		subject, body := notify.Digest(stale)
-		return sendEmail(c, subject, body, now())
+		return sendEmail(c, notify.Digest(stale), now())
 	})
 }
 
@@ -163,11 +162,7 @@ var testEmailCmd = &cobra.Command{
 			if !ok {
 				return errors.New("SMTP is not configured: proz config smtp")
 			}
-			_, body := notify.Digest([]core.Status{{
-				Project: core.Project{Name: "example"},
-				Note:    core.Note{Lines: []string{"Quiet for 8 days", "Milestone: shipped login; next: signup"}},
-			}})
-			if err := sendEmail(c, "proz email works", "This is a sample. The real digest looks like this:\n\n"+body, now()); err != nil {
+			if err := sendEmail(c, notify.Sample(), now()); err != nil {
 				return err
 			}
 			fmt.Println("Sent a sample email to " + c.To + ".")
