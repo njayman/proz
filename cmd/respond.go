@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -42,13 +43,17 @@ var resumeCmd = &cobra.Command{
 }
 
 var snoozeCmd = &cobra.Command{
-	Use:   "snooze [project] [days]",
+	Use:   "snooze [project] [days | --until YYYY-MM-DD]",
 	Short: "Hide a project's nudge for some days (default 7)",
 	Long: "Hide a project's nudge for some days (default 7). If it is still quiet\n" +
 		"when the snooze ends, it nudges again. With two arguments: project, days.\n" +
-		"With one: a project name if one matches exactly, otherwise days.",
+		"With one: a project name if one matches exactly, otherwise days.\n" +
+		"--until snoozes to the start of a local date instead.",
 	Args: cobra.MaximumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if cmd.Flags().Changed("until") {
+			return snoozeToDate(args, snoozeUntil)
+		}
 		days := 7
 		n := len(args)
 		if n == 1 {
@@ -68,6 +73,42 @@ var snoozeCmd = &cobra.Command{
 			return s.Snooze(id, time.Duration(days)*24*time.Hour)
 		}, fmt.Sprintf("Snoozed '%%s' for %d days.", days))
 	},
+}
+
+var snoozeUntil string
+
+// snoozeToDate snoozes to the start of a local date; args is the project only.
+func snoozeToDate(args []string, date string) error {
+	if len(args) > 1 {
+		return errors.New("give days or --until, not both")
+	}
+	if len(args) == 1 {
+		if _, err := strconv.Atoi(args[0]); err == nil {
+			if _, err := findProject(args[0]); err != nil {
+				return fmt.Errorf("project %q not found; --until replaces days", args[0])
+			}
+		}
+	}
+	until, err := startOfDay(date, now().Location())
+	if err != nil {
+		return err
+	}
+	return respond(args, func(s *core.Store, id int64) error {
+		return s.SnoozeUntil(id, until)
+	}, "Snoozed '%s' until "+until.Format("Mon 2 Jan 2006")+".")
+}
+
+// startOfDay is the first moment of a YYYY-MM-DD date in loc. Where a DST
+// change skips midnight, Go may land on the day before; step into the day.
+func startOfDay(date string, loc *time.Location) (time.Time, error) {
+	t, err := time.ParseInLocation(time.DateOnly, date, loc)
+	if err != nil {
+		return t, fmt.Errorf("--until wants a date like 2026-11-09, got %q", date)
+	}
+	for t.Format(time.DateOnly) != date {
+		t = t.Add(time.Hour)
+	}
+	return t, nil
 }
 
 var dropCmd = &cobra.Command{
@@ -129,5 +170,6 @@ func respond(args []string, fn func(*core.Store, int64) error, done string) erro
 
 func init() {
 	archivedCmd.Flags().BoolVar(&archivedJSON, "json", false, "print archived projects as JSON")
+	snoozeCmd.Flags().StringVar(&snoozeUntil, "until", "", "snooze to the start of this local date (YYYY-MM-DD)")
 	rootCmd.AddCommand(resumeCmd, snoozeCmd, dropCmd, restoreCmd, archivedCmd)
 }
