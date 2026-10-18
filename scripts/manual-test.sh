@@ -233,9 +233,11 @@ expect() {
 expect_not() {
   local label=$1 needle=$2 out; shift 2
   printf '  %s$ %s%s\n' "$DIM" "$*" "$RESET"
-  out=$("$@" 2>&1) || true
+  local rc=0
+  out=$("$@" 2>&1) || rc=$?
   printf '%s\n' "$out" | sed 's/^/    /'
-  if grep -qF -- "$needle" <<<"$out"; then bad "$label (found: $needle)"; else ok "$label"; fi
+  if (( rc != 0 )) || [[ -z "$out" ]]; then bad "$label (command failed or printed nothing)"
+  elif grep -qF -- "$needle" <<<"$out"; then bad "$label (found: $needle)"; else ok "$label"; fi
 }
 
 # human QUESTION records what only a person can see (a popup, an icon).
@@ -293,6 +295,12 @@ results() {
 }
 
 run_wizard() {
+
+# The sandbox relies on XDG_CONFIG_HOME, which proz ignores on macOS, and the
+# stages use GNU date and touch.
+[[ "$(uname -s)" == Linux ]] || { warn "This test runs on Linux only."; exit 1; }
+# Stage 1 deletes folders inside the sandbox, so it must be a folder of its own.
+case "$SB" in "" | / | "$HOME" | "$HOME/") warn "PROZ_TEST_DIR must be a folder of its own, not $SB"; exit 1 ;; esac
 
 TOTAL_STAGES=13
 
@@ -362,8 +370,8 @@ step "Browse it (Tab shows all PATH binaries), then press q to save without a pr
 step "At the Arguments prompt, press Enter"
 pause "Press Enter to open the picker"
 (cd "$W" && "$P" add web) || bad "proz add web"
-(cd "$H" && "$P" add "habit tracker" </dev/null) | sed 's/^/    /'
-"$P" "$SB/projects/fresh" </dev/null | sed 's/^/    /'
+(cd "$H" && "$P" add "habit tracker" </dev/null) | sed 's/^/    /' || bad "proz add habit tracker"
+"$P" "$SB/projects/fresh" </dev/null | sed 's/^/    /' || bad "proz <path> registers fresh"
 show "$P" idea "offline sync"
 sql "UPDATE projects SET created_at = created_at - 11*86400 WHERE name != 'fresh'"
 ok "history moved back"
@@ -466,7 +474,7 @@ say "Talks to 'proz mcp' over stdio like Claude Code would."
 expect "tools listed" "read_brain_note" mcp tools/list "{}"
 expect "list_nudges" "habit tracker" mcp tools/call '{"name":"list_nudges","arguments":{}}'
 expect "get_project by name" "feature/login" mcp tools/call '{"name":"get_project","arguments":{"project":"web"}}'
-expect "get_project by working directory" "web" mcp tools/call "{\"name\":\"get_project\",\"arguments\":{\"dir\":\"$W\"}}"
+expect "get_project by working directory" "feature/login" mcp tools/call "{\"name\":\"get_project\",\"arguments\":{\"dir\":\"$W\"}}"
 expect "read_brain_note" "my own notes" mcp tools/call '{"name":"read_brain_note","arguments":{"project":"web"}}'
 show mcp tools/call '{"name":"record_milestone","arguments":{"project":"fresh","text":"set up by an agent"}}'
 expect "record_milestone" "set up by an agent" "$P" status fresh
@@ -495,7 +503,7 @@ note "If that failed with a certificate error, Mailtrap offers STARTTLS with its
 open_bg "http://127.0.0.1:3550"
 note "Reload the Mailtrap page if the inbox looks empty."
 human "The sample email arrived in Mailtrap"
-MT_ID=$(curl -s http://127.0.0.1:3550/api/v1/messages | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+MT_ID=$(curl -s http://127.0.0.1:3550/api/v1/messages | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4) || true
 MT_RAW=$(curl -s "http://127.0.0.1:3550/api/v1/message/$MT_ID/raw")
 if grep -q 'multipart/alternative' <<<"$MT_RAW" && grep -q 'Content-Type: text/html' <<<"$MT_RAW" && grep -q 'Content-Type: text/plain' <<<"$MT_RAW"; then
   ok "the sample email has a plain text part and an HTML part"
@@ -519,6 +527,7 @@ say "Starts the tray build in the background, still in the sandbox."
 note "The icon shows in your bar's tray area (swaybar, waybar or eww's systray widget)."
 "$BIN/proz-tray" tray > "$SB/tray.log" 2>&1 &
 TRAY=$!
+trap 'kill "$TRAY" 2>/dev/null' EXIT # Ctrl-C must not leave the sandbox tray running
 sleep 3
 kill -0 "$TRAY" 2>/dev/null && ok "tray is running" || bad "tray is running (see $SB/tray.log)"
 human "A proz icon with a dot is in the bar"
@@ -541,7 +550,10 @@ say "to ~/.local/bin/proz and starts it at login. It backs up first."
 if confirm "Install for real now?"; then
   unset XDG_CONFIG_HOME CLAUDE_CONFIG_DIR
   BACKUP="$HOME/.config/proz.backup-$(date +%Y%m%d-%H%M%S)"
-  [[ -d "$HOME/.config/proz" ]] && cp -a "$HOME/.config/proz" "$BACKUP" && ok "real config backed up to $BACKUP"
+  if [[ -d "$HOME/.config/proz" ]]; then
+    cp -a "$HOME/.config/proz" "$BACKUP" || { bad "real config backed up"; warn "No backup, so nothing was installed."; exit 1; }
+    ok "real config backed up to $BACKUP"
+  fi
   [[ -f "$HOME/.local/bin/proz" ]] && cp -a "$HOME/.local/bin/proz" "$SB/proz.previous" && note "old binary kept at $SB/proz.previous"
   install -m 755 "$BIN/proz-tray" "$HOME/.local/bin/proz" && ok "installed ~/.local/bin/proz"
   say "Your real projects, after the upgrade from your old version:"
@@ -550,7 +562,11 @@ if confirm "Install for real now?"; then
   if [[ "${XDG_CURRENT_DESKTOP:-}" == *sway* ]]; then
     say "Sway ignores ~/.config/autostart, so the tray runs as a systemd user"
     say "service that sway starts once per login (contrib/sway in the repo)."
-    if [[ -f "$HOME/.config/systemd/user/proz-tray.service" ]] && grep -qs 'include ~/.config/sway/proz.conf' "$HOME/.config/sway/config"; then
+    sway_ready() {
+      [[ -f "$HOME/.config/systemd/user/proz-tray.service" && -f "$HOME/.config/sway/proz.conf" ]] &&
+        grep -qsx '[[:space:]]*include ~/.config/sway/proz.conf' "$HOME/.config/sway/config"
+    }
+    if sway_ready; then
       ok "sway starts the proz-tray service"
     else
       note "Install it yourself (backs up your sway config first):"
@@ -561,7 +577,7 @@ if confirm "Install for real now?"; then
       note "  printf '\\ninclude ~/.config/sway/proz.conf\\n' >> ~/.config/sway/config"
       note "  systemctl --user daemon-reload && sway -C"
       pause "Press Enter once installed"
-      [[ -f "$HOME/.config/systemd/user/proz-tray.service" ]] && ok "sway starts the proz-tray service" || bad "sway starts the proz-tray service"
+      sway_ready && ok "sway starts the proz-tray service" || bad "sway starts the proz-tray service"
     fi
   else
     show proz tray autostart on

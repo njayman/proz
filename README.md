@@ -112,10 +112,12 @@ Release binaries include the tray. Building yourself: `go build -tags tray .` (o
 Sway ignores XDG autostart, so `proz tray autostart on` does nothing there. Run the tray as a systemd user service that Sway starts instead; it restarts after a crash and logs to `journalctl --user -u proz-tray`. You also need a bar with a tray (swaybar, or waybar or eww with a systray widget).
 
 ```bash
+mkdir -p ~/.config/systemd/user
 cp contrib/sway/proz-tray.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 cp contrib/sway/proz.conf ~/.config/sway/
-echo 'include ~/.config/sway/proz.conf' >> ~/.config/sway/config
+grep -qxF 'include ~/.config/sway/proz.conf' ~/.config/sway/config ||
+  echo 'include ~/.config/sway/proz.conf' >> ~/.config/sway/config
 ```
 
 Log in again to start it (Sway runs `exec` at login, not on reload). The service expects the binary at `~/.local/bin/proz`. `proz.conf` hands Sway's Wayland session to systemd first, so programs opened from Resume can show windows. Avoid `dex --autostart`: it launches every XDG autostart entry on the system, not just proz, and nothing restarts the tray if it dies.
@@ -190,7 +192,7 @@ The last 4 programs picked or launched sort to the top of the picker. Re-running
 
 ## Contributing
 
-Open a pull request. Before a release, run the manual end to end test: `scripts/manual-test.sh`. It walks you through every feature in a throwaway config (the email stage needs [Mailtrap Local](https://github.com/mailtrap/mailtrap-local)) and writes a report; only its last stage touches your real setup, and it asks first.
+Open a pull request. Before a release, run the manual end to end test, [`scripts/manual-test.sh`](scripts/manual-test.sh). It walks you through every feature in a throwaway config (the email stage needs [Mailtrap Local](https://github.com/mailtrap/mailtrap-local)) and writes a report; only its last stage touches your real setup, and it asks first.
 
 ## License
 
