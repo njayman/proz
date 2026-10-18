@@ -59,6 +59,11 @@ func (s *Store) SetModule(m Module, on bool) error {
 	if on {
 		v = "on"
 	}
-	_, err := s.db.Exec(`INSERT OR REPLACE INTO settings (workspace_id, key, value) VALUES (?, ?, ?)`, DefaultWorkspace, "module."+string(m), v)
-	return err
+	if _, err := s.db.Exec(`INSERT OR REPLACE INTO settings (workspace_id, key, value) VALUES (?, ?, ?)`, DefaultWorkspace, "module."+string(m), v); err != nil {
+		return err
+	}
+	if m == ModulePrompts {
+		return s.SyncBrain() // brain notes may sync elsewhere: drop or add the prompt now, not at the next check
+	}
+	return nil
 }

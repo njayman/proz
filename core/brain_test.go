@@ -261,3 +261,25 @@ func TestLongNamesGetAShortFileName(t *testing.T) {
 		t.Fatalf("%d bytes, %v", len(filepath.Base(path)), err)
 	}
 }
+
+func TestSwitchingPromptsOffClearsThemFromBrainNotesAtOnce(t *testing.T) {
+	config := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", config)
+	c := &clock{t0}
+	s, brain := brainAt(t, c)
+	project := t.TempDir()
+	s.AddProject(Project{Name: "app", Path: project})
+	claudeLog(t, config, project, "s1", t0.Add(day), prompt("my private plan"))
+	c.t = t0.Add(2 * day)
+	s.SyncBrain()
+	note := filepath.Join(brain, "app.md")
+	if data, _ := os.ReadFile(note); !strings.Contains(string(data), "my private plan") {
+		t.Fatalf("prompt on by default:\n%s", data)
+	}
+	if err := s.SetModule(ModulePrompts, false); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(note); strings.Contains(string(data), "my private plan") {
+		t.Fatalf("prompt still in the note:\n%s", data)
+	}
+}

@@ -123,7 +123,7 @@ On Linux the notification goes through `notify-send`, which needs your desktop s
 
 ### `proz config notifications|tray|email|brain|prompts [on|off]`
 
-Shows or switches a module. Notifications are on by default; the tray, email and brain stay off until you enable or configure them. Prompts is on: notes show your last Claude Code prompt in the project, and so do notifications, the email digest and brain notes. Switch it off to keep prompts private; the session still counts as activity.
+Shows or switches a module. Notifications are on by default; the tray, email and brain stay off until you enable or configure them. Prompts is on: notes show your last Claude Code prompt in the project, and so do notifications, the email digest and brain notes. Switch it off to keep prompts private; brain notes drop theirs at once, and the session still counts as activity.
 
 ### `proz config brain-path [dir]` and `proz brain [project] [--json]`
 
