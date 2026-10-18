@@ -146,6 +146,9 @@ func Email(c core.SMTP, m Mail, now time.Time) error {
 	fmt.Fprintf(w, "From: %s\nTo: %s\nSubject: %s\nDate: %s\nMessage-ID: %s\nMIME-Version: 1.0\nContent-Type: multipart/alternative; boundary=%s\n\n",
 		from, to, mime.QEncoding.Encode("utf-8", m.Subject), now.Format(time.RFC1123Z), messageID(from.Address), mw.Boundary())
 	for _, part := range []struct{ typ, body string }{{"text/plain", m.Text}, {"text/html", m.HTML}} { // plain first: clients show the last part they can
+		if part.body == "" {
+			continue // an empty alternative would show as a blank email
+		}
 		pw, err := mw.CreatePart(textproto.MIMEHeader{
 			"Content-Type":              {part.typ + "; charset=UTF-8"},
 			"Content-Transfer-Encoding": {"quoted-printable"},

@@ -287,3 +287,25 @@ func TestEmailReportsAConnectionDroppedMidMessage(t *testing.T) {
 		t.Fatal("want an error")
 	}
 }
+
+func TestEmailWithoutHTMLSendsOnlyText(t *testing.T) {
+	port, got := fakeSMTP(t)
+	c := core.SMTP{Host: "127.0.0.1", Port: port, From: "me@example.com", To: "me@example.com"}
+	if err := Email(c, Mail{Subject: "s", Text: "just text"}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	data := <-got
+	data = data[strings.Index(data, "RCPT"):]
+	msg, err := mail.ReadMessage(strings.NewReader(data[strings.Index(data, "\n")+1:]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, params, _ := mime.ParseMediaType(msg.Header.Get("Content-Type"))
+	r := multipart.NewReader(msg.Body, params["boundary"])
+	if p, err := r.NextPart(); err != nil || !strings.HasPrefix(p.Header.Get("Content-Type"), "text/plain") {
+		t.Fatalf("want a text part: %v", err)
+	}
+	if _, err := r.NextPart(); err != io.EOF {
+		t.Fatalf("an empty HTML part makes clients show a blank email: %v", err)
+	}
+}
