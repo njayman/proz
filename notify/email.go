@@ -67,7 +67,9 @@ func digest(lead string, stale []core.Status) Mail {
 	}
 	b.WriteString("\n" + footer + "proz config email off\n")
 	var h strings.Builder
-	page.Execute(&h, map[string]any{"Lead": lead, "Intro": intro, "Footer": footer, "Stale": stale})
+	if err := page.Execute(&h, map[string]any{"Lead": lead, "Intro": intro, "Footer": footer, "Stale": stale}); err != nil {
+		panic(err) // only a broken template fails here, and the tests render it
+	}
 	return Mail{Subject: subject, Text: b.String(), HTML: h.String()}
 }
 
@@ -144,15 +146,18 @@ func Email(c core.SMTP, m Mail, now time.Time) error {
 	fmt.Fprintf(w, "From: %s\nTo: %s\nSubject: %s\nDate: %s\nMessage-ID: %s\nMIME-Version: 1.0\nContent-Type: multipart/alternative; boundary=%s\n\n",
 		from, to, mime.QEncoding.Encode("utf-8", m.Subject), now.Format(time.RFC1123Z), messageID(from.Address), mw.Boundary())
 	for _, part := range []struct{ typ, body string }{{"text/plain", m.Text}, {"text/html", m.HTML}} { // plain first: clients show the last part they can
-		pw, _ := mw.CreatePart(textproto.MIMEHeader{
+		pw, err := mw.CreatePart(textproto.MIMEHeader{
 			"Content-Type":              {part.typ + "; charset=UTF-8"},
 			"Content-Transfer-Encoding": {"quoted-printable"},
 		})
+		if err != nil {
+			return fmt.Errorf("sending email: %w", err)
+		}
 		qp := quotedprintable.NewWriter(pw)
 		qp.Write([]byte(part.body))
 		qp.Close()
 	}
-	mw.Close()
+	mw.Close() // ponytail: write errors stick in the connection's buffer and surface at w.Close
 	if err := w.Close(); err != nil {
 		return fmt.Errorf("sending email: %w", err)
 	}

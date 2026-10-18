@@ -254,3 +254,36 @@ func TestEveryEmailHasAUniqueMessageID(t *testing.T) {
 		t.Fatal("Message-ID repeats")
 	}
 }
+
+func TestEmailReportsAConnectionDroppedMidMessage(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Skip(err)
+	}
+	defer ln.Close()
+	go func() {
+		c, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		r := bufio.NewReader(c)
+		io.WriteString(c, "220 fake\r\n")
+		for {
+			line, err := r.ReadString('\n')
+			if err != nil {
+				return
+			}
+			if strings.HasPrefix(line, "DATA") {
+				io.WriteString(c, "354 go\r\n")
+				c.Close() // the server dies before the message is in
+				return
+			}
+			io.WriteString(c, "250 ok\r\n")
+		}
+	}()
+	c := core.SMTP{Host: "127.0.0.1", Port: ln.Addr().(*net.TCPAddr).Port, From: "me@example.com", To: "me@example.com"}
+	big := strings.Repeat("a long note line\n", 20000) // overflows every buffer, so a write fails
+	if err := Email(c, Mail{Subject: "s", Text: big, HTML: big}, time.Now()); err == nil {
+		t.Fatal("want an error")
+	}
+}
