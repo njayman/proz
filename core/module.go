@@ -12,8 +12,9 @@ type Module string
 const (
 	ModuleNotifications Module = "notifications"
 	ModuleTray          Module = "tray"
-	ModuleEmail         Module = "email" // off until SMTP is configured
-	ModuleBrain         Module = "brain" // off until a brain folder is configured
+	ModuleEmail         Module = "email"   // off until SMTP is configured
+	ModuleBrain         Module = "brain"   // off until a brain folder is configured
+	ModulePrompts       Module = "prompts" // the last Claude Code prompt in notes; off keeps it private
 )
 
 var moduleDefaults = map[Module]bool{
@@ -21,10 +22,11 @@ var moduleDefaults = map[Module]bool{
 	ModuleTray:          false, // on once the user enables it
 	ModuleEmail:         false,
 	ModuleBrain:         false,
+	ModulePrompts:       true,
 }
 
 // Modules lists every module, in a stable order.
-var Modules = []Module{ModuleNotifications, ModuleTray, ModuleEmail, ModuleBrain}
+var Modules = []Module{ModuleNotifications, ModuleTray, ModuleEmail, ModuleBrain, ModulePrompts}
 
 func (s *Store) ModuleOn(m Module) (bool, error) {
 	def, ok := moduleDefaults[m]
@@ -57,6 +59,11 @@ func (s *Store) SetModule(m Module, on bool) error {
 	if on {
 		v = "on"
 	}
-	_, err := s.db.Exec(`INSERT OR REPLACE INTO settings (workspace_id, key, value) VALUES (?, ?, ?)`, DefaultWorkspace, "module."+string(m), v)
-	return err
+	if _, err := s.db.Exec(`INSERT OR REPLACE INTO settings (workspace_id, key, value) VALUES (?, ?, ?)`, DefaultWorkspace, "module."+string(m), v); err != nil {
+		return err
+	}
+	if m == ModulePrompts {
+		return s.SyncBrain() // brain notes may sync elsewhere: drop or add the prompt now, not at the next check
+	}
+	return nil
 }
