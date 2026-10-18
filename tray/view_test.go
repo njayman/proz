@@ -74,3 +74,10 @@ func TestSnapshotReadsNudgesAndReportsErrorsWithoutLosingTheIcon(t *testing.T) {
 		t.Fatalf("an error still renders a view that says so: got %+v, %v", v, err)
 	}
 }
+
+func TestSnoozeOffersFiveLengthsShortestFirst(t *testing.T) {
+	want := []SnoozeChoice{{"Tomorrow", 1}, {"3 days", 3}, {"1 week", 7}, {"2 weeks", 14}, {"1 month", 30}}
+	if !reflect.DeepEqual(SnoozeChoices, want) {
+		t.Fatalf("got %+v", SnoozeChoices)
+	}
+}

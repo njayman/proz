@@ -46,7 +46,12 @@ func onReady(d Deps) {
 		for _, it := range v.Items {
 			m := systray.AddMenuItem(it.Label, "")
 			on(m.AddSubMenuItem("Resume", "Open it with its program"), done, func() { act(d, d.Resume, it.ID, show) })
-			on(m.AddSubMenuItem("Snooze 7 days", "Remind me in a week if still quiet"), done, func() { act(d, d.Snooze, it.ID, show) })
+			snooze := m.AddSubMenuItem("Snooze", "Remind me later if still quiet")
+			for _, c := range SnoozeChoices {
+				on(snooze.AddSubMenuItem(c.Label, ""), done, func() {
+					act(d, func(id int64) error { return d.Snooze(id, c.Days) }, it.ID, show)
+				})
+			}
 			on(m.AddSubMenuItem("Drop", "Archive until there is new activity"), done, func() { act(d, d.Drop, it.ID, show) })
 		}
 		if len(v.Items) > 0 {
