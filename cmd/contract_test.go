@@ -471,8 +471,13 @@ func TestEmailDigestIsConfiguredThenSentWeeklyByCheck(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
 	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": "/web"}]`), 0644)
 	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC) // a Thursday
-	var sent []string                                   // subjects
-	t.Cleanup(func() { now = time.Now; send = notify.Send; sendEmail = notify.Email; stdin = bufio.NewReader(os.Stdin) })
+	var sent []string                                  // subjects
+	t.Cleanup(func() {
+		now = time.Now
+		send = notify.Send
+		sendEmail = notify.Email
+		stdin = bufio.NewReader(os.Stdin)
+	})
 	send = func(m []notify.Message) (int, error) { return len(m), nil }
 	sendEmail = func(c core.SMTP, subject, body string, _ time.Time) error {
 		if c.Password != "s3cret" || !strings.Contains(body, "proz snooze ") {
@@ -623,5 +628,44 @@ func TestTraySnoozeHidesTheProjectForTheChosenDays(t *testing.T) {
 	withStore(func(s *core.Store) (err error) { st, err = s.Status(p.ID); return err })
 	if d := st.SnoozedUntil.Sub(now()); d < 14*24*time.Hour-time.Minute || d > 14*24*time.Hour {
 		t.Fatalf("snoozed for %v", d)
+	}
+}
+
+func TestSnoozeUntilADate(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
+	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": "`+t.TempDir()+`"}]`), 0644)
+	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	t.Cleanup(func() { now = time.Now })
+	now = func() time.Time { return t0 }
+	run(t, "list", "--json")
+	now = func() time.Time { return t0.Add(10 * 24 * time.Hour) } // Oct 11, stale
+	until := func() string {
+		var out struct {
+			SnoozedUntil string `json:"snoozed_until"`
+		}
+		json.Unmarshal([]byte(run(t, "status", "web", "--json")), &out)
+		return out.SnoozedUntil
+	}
+	for _, bad := range [][]string{
+		{"snooze", "web", "--until", "2026-10-11"}, // today
+		{"snooze", "web", "--until", "2026-10-01"}, // past
+		{"snooze", "web", "--until", "2200-01-01"}, // over 100 years
+		{"snooze", "web", "--until", "next week"},
+		{"snooze", "web", "3", "--until", "2026-11-09"},
+	} {
+		if execute(bad...) == nil {
+			t.Errorf("%v: want an error", bad)
+		}
+		if got := until(); got != "" {
+			t.Fatalf("%v changed the snooze to %q", bad, got)
+		}
+	}
+	if out := run(t, "snooze", "web", "--until", "2026-11-09"); !strings.Contains(out, "until Mon 9 Nov 2026") {
+		t.Fatalf("output %q", out)
+	}
+	if got := until(); got != "2026-11-09T00:00:00Z" {
+		t.Fatalf("snoozed until %q, want the start of that day", got)
 	}
 }

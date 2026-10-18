@@ -3,6 +3,7 @@ package core
 import (
 	"errors"
 	"testing"
+	"time"
 )
 
 func stateAt(t *testing.T, s *Store, id int64) State {
@@ -131,5 +132,32 @@ func TestNewActivityEndsTheSnoozeWithItsStalePeriod(t *testing.T) {
 	c.t = t0.Add(20 * day) // quiet again, a new stale period, still inside the old snooze
 	if ns := nudgesAt(t, s); len(ns) != 1 {
 		t.Fatalf("a new stale period must nudge despite the old snooze, got %+v", ns)
+	}
+}
+
+func TestSnoozeUntilATimeNudgesAgainThen(t *testing.T) {
+	c := &clock{t0}
+	s := openAt(t, c)
+	s.AddProject(Project{Name: "app", Path: t.TempDir()})
+	p := onlyProject(t, s)
+	c.t = t0.Add(10 * day)
+	until := t0.Add(20 * day)
+	for name, bad := range map[string]time.Time{"now": c.t, "past": t0, "over 100 years": c.t.Add(101 * 365 * day)} {
+		if err := s.SnoozeUntil(p.ID, bad); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+	if st, _ := s.Status(p.ID); st.State != StateStale {
+		t.Fatalf("a refused snooze changes nothing: %v", st.State)
+	}
+	if err := s.SnoozeUntil(p.ID, until); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := s.Status(p.ID); st.State != StateSnoozed || !st.SnoozedUntil.Equal(until) {
+		t.Fatalf("got %v until %v", st.State, st.SnoozedUntil)
+	}
+	c.t = until
+	if st, _ := s.Status(p.ID); st.State != StateStale {
+		t.Fatalf("nudges again when it ends: %v", st.State)
 	}
 }

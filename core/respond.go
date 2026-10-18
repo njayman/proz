@@ -15,8 +15,22 @@ func (s *Store) Snooze(id int64, d time.Duration) error {
 	if d < time.Second {
 		return errors.New("snooze must be positive")
 	}
+	return s.SnoozeUntil(id, s.now().Add(d))
+}
+
+// maxSnooze bounds a snooze, so a typo cannot hide a project for good.
+const maxSnooze = 100 * 365 * 24 * time.Hour
+
+// SnoozeUntil is Snooze to a moment rather than for a length.
+func (s *Store) SnoozeUntil(id int64, until time.Time) error {
 	now := s.now()
-	return s.setProject(id, `snoozed_until = ?, snoozed_at = ?`, now.Add(d).Unix(), now.Unix())
+	if !until.After(now) {
+		return errors.New("a snooze must end in the future")
+	}
+	if until.Sub(now) > maxSnooze {
+		return errors.New("a snooze can last at most 100 years")
+	}
+	return s.setProject(id, `snoozed_until = ?, snoozed_at = ?`, until.Unix(), now.Unix())
 }
 
 // Drop archives project id: it stops nudging until any new activity, which
