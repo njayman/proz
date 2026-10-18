@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/njayman/proz/core"
 )
@@ -106,9 +107,17 @@ func Email(c core.SMTP, subject, body string, now time.Time) error {
 }
 
 // messageID is unique per message; strict servers such as Gmail reject mail
-// without one.
+// without one. A msg-id must be ASCII, so an international domain gets a
+// reserved stand-in rather than an idna dependency.
 func messageID(from string) string {
-	return fmt.Sprintf("<%s@%s>", rand.Text(), from[strings.LastIndex(from, "@")+1:])
+	domain := from[strings.LastIndex(from, "@")+1:]
+	for _, r := range domain {
+		if r > unicode.MaxASCII {
+			domain = "proz.invalid"
+			break
+		}
+	}
+	return fmt.Sprintf("<%s@%s>", rand.Text(), domain)
 }
 
 // localhost is where a plaintext connection never leaves the machine, such
