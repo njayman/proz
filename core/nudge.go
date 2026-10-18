@@ -255,29 +255,36 @@ type gitState struct {
 // are not the user's work, and in a bigger repo only commits under dir count.
 // ok is false when dir is empty, git is missing, or no such commit exists, so
 // the project falls back to its other signals; a nudge is the safe failure.
-// ponytail: one or two git processes per project per call; cache by HEAD mtime if project counts grow large.
+// ponytail: two or three git processes per project per call; cache by HEAD mtime if project counts grow large.
 func readGit(dir string) (g gitState, ok bool) {
 	if dir == "" {
 		return g, false
 	}
-	// %S is the ref the commit was reached from, so the branch matches the commit.
-	out, err := exec.Command("git", "-C", dir, "log", "-1", "--source", "--branches", "HEAD", "--format=%ct%x00%S%x00%s", "--", ".").Output()
+	// %S is a ref the commit was reached from, so the branch matches the commit.
+	out, err := exec.Command("git", "-C", dir, "log", "-1", "--source", "--branches", "HEAD", "--format=%ct%x00%H%x00%S%x00%s", "--", ".").Output()
 	if err != nil {
 		return g, false
 	}
-	f := strings.SplitN(strings.TrimRight(string(out), "\n"), "\x00", 3)
-	if len(f) != 3 {
+	f := strings.SplitN(strings.TrimRight(string(out), "\n"), "\x00", 4)
+	if len(f) != 4 {
 		return g, false
 	}
 	n, err := strconv.ParseInt(f[0], 10, 64)
 	if err != nil {
 		return g, false
 	}
-	g.when, g.subject = time.Unix(n, 0), f[2]
-	if f[1] != "HEAD" {
-		g.branch = strings.TrimPrefix(f[1], "refs/heads/") // git prints either form
-	} else if out, err := exec.Command("git", "-C", dir, "branch", "--show-current").Output(); err == nil {
-		g.branch = strings.TrimSpace(string(out)) // reached from HEAD: the checked-out branch, empty if detached
+	g.when, g.subject = time.Unix(n, 0), f[3]
+	g.branch = strings.TrimPrefix(f[2], "refs/heads/") // git prints either form
+	// A commit on several branches names the first in git's order; the
+	// checked-out one wins when it holds the commit. Empty if detached.
+	if out, err := exec.Command("git", "-C", dir, "branch", "--show-current").Output(); err == nil {
+		if cur := strings.TrimSpace(string(out)); g.branch == "HEAD" || cur != "" && cur != g.branch &&
+			exec.Command("git", "-C", dir, "merge-base", "--is-ancestor", f[1], "HEAD").Run() == nil {
+			g.branch = cur
+		}
+	}
+	if g.branch == "HEAD" {
+		g.branch = ""
 	}
 	return g, true
 }

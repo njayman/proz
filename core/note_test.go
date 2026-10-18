@@ -134,6 +134,22 @@ func TestNoteNamesTheBranchOfTheLastCommit(t *testing.T) {
 	}
 }
 
+func TestNoteNamesTheCheckedOutBranchWhenTheCommitIsOnSeveral(t *testing.T) {
+	c := &clock{t0}
+	s := openAt(t, c)
+	dir, commit := gitRepo(t)
+	commit(t0.Add(-day))
+	git(t, dir, t0, "branch", "-M", "main")
+	git(t, dir, t0, "branch", "a-old-feature") // sorts first and holds the same commit
+	git(t, dir, t0, "checkout", "-q", "-b", "z-current")
+	s.AddProject(Project{Name: "app", Path: dir})
+
+	c.t = t0.Add(2 * day)
+	if got := status(t, s).Note.Lines[2]; got != "Branch: z-current" {
+		t.Fatalf("got %q", got)
+	}
+}
+
 func TestProjectNamedFindsTheFirstExactMatch(t *testing.T) {
 	s := open(t, t.TempDir())
 	s.AddProject(Project{Name: "web", Path: "/one"})
