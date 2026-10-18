@@ -6,6 +6,7 @@ import (
 	"mime/quotedprintable"
 	"net"
 	"net/mail"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -153,5 +154,38 @@ func TestEmailRefusesPlaintextToARemoteServer(t *testing.T) {
 			t.Fatal("body sent in plaintext")
 		}
 	case <-time.After(time.Second):
+	}
+}
+
+func TestEveryEmailHasAUniqueMessageID(t *testing.T) {
+	ids := map[string]bool{}
+	for _, tc := range []struct{ from, want string }{
+		{"proz <me@example.com>", `^<[A-Z2-7]{26}@example\.com>$`},
+		{"me@example.com", `^<[A-Z2-7]{26}@example\.com>$`},
+		{"me@bücher.example", `^<[A-Z2-7]{26}@proz\.invalid>$`}, // a msg-id must be ASCII
+	} {
+		port, got := fakeSMTP(t)
+		c := core.SMTP{Host: "127.0.0.1", Port: port, From: tc.from, To: "me@elsewhere.test"}
+		if err := Email(c, "s", "b", time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		log := <-got
+		i := strings.Index(log, "RCPT")
+		if i < 0 {
+			t.Fatalf("no envelope in\n%s", log)
+		}
+		data := log[i:]
+		msg, err := mail.ReadMessage(strings.NewReader(data[strings.Index(data, "\n")+1:]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		id := msg.Header.Get("Message-ID")
+		if !regexp.MustCompile(tc.want).MatchString(id) {
+			t.Fatalf("from %q: Message-ID %q, want %s", tc.from, id, tc.want)
+		}
+		ids[id] = true
+	}
+	if len(ids) != 3 {
+		t.Fatal("Message-ID repeats")
 	}
 }

@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"crypto/rand"
 	"crypto/tls"
 	"fmt"
 	"mime"
@@ -11,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/njayman/proz/core"
 )
@@ -92,8 +94,8 @@ func Email(c core.SMTP, subject, body string, now time.Time) error {
 	if err != nil {
 		return fmt.Errorf("sending email: %w", err)
 	}
-	fmt.Fprintf(w, "From: %s\nTo: %s\nSubject: %s\nDate: %s\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: quoted-printable\n\n",
-		from, to, mime.QEncoding.Encode("utf-8", subject), now.Format(time.RFC1123Z))
+	fmt.Fprintf(w, "From: %s\nTo: %s\nSubject: %s\nDate: %s\nMessage-ID: %s\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: quoted-printable\n\n",
+		from, to, mime.QEncoding.Encode("utf-8", subject), now.Format(time.RFC1123Z), messageID(from.Address))
 	qp := quotedprintable.NewWriter(w)
 	qp.Write([]byte(body))
 	qp.Close()
@@ -102,6 +104,20 @@ func Email(c core.SMTP, subject, body string, now time.Time) error {
 	}
 	cl.Quit() // the server has the message; a failed goodbye must not resend it
 	return nil
+}
+
+// messageID is unique per message; strict servers such as Gmail reject mail
+// without one. A msg-id must be ASCII, so an international domain gets a
+// reserved stand-in rather than an idna dependency.
+func messageID(from string) string {
+	domain := from[strings.LastIndex(from, "@")+1:]
+	for _, r := range domain {
+		if r > unicode.MaxASCII {
+			domain = "proz.invalid"
+			break
+		}
+	}
+	return fmt.Sprintf("<%s@%s>", rand.Text(), domain)
 }
 
 // localhost is where a plaintext connection never leaves the machine, such
