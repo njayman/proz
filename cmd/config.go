@@ -76,7 +76,7 @@ func moduleCmd(m core.Module) *cobra.Command {
 						return fmt.Errorf("%s: want on or off, got %q", m, args[0])
 					}
 					if m == core.ModuleTray && args[0] == "off" {
-						// off means off: no tray at the next login either; a running one quits on its next refresh
+						// off means off: no tray at the next login either; a running one quits within 30 seconds
 						if err := autostart.Remove(); err != nil {
 							return err
 						}

@@ -587,3 +587,19 @@ func TestBrainIsConfiguredReadAndSyncedByCheck(t *testing.T) {
 		t.Fatalf("brain prints the note: %q", out)
 	}
 }
+
+func TestTrayStaysOnUnlessTheSettingSaysOff(t *testing.T) {
+	broken := filepath.Join(t.TempDir(), "file")
+	os.WriteFile(broken, nil, 0o644)
+	t.Setenv("XDG_CONFIG_HOME", broken) // the store cannot open
+	if !trayEnabled() {
+		t.Fatal("an unreadable setting must keep the tray running")
+	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := withStore(func(s *core.Store) error { return s.SetModule(core.ModuleTray, false) }); err != nil {
+		t.Fatal(err)
+	}
+	if trayEnabled() {
+		t.Fatal("tray off must read as off")
+	}
+}

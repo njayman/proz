@@ -22,7 +22,7 @@ var trayCmd = &cobra.Command{
 		"shows a dot while any project is quiet, and notifies once per quiet\n" +
 		"stretch. The menu resumes, snoozes or drops each quiet project.\n" +
 		"'proz tray autostart on' starts it at login; 'proz config tray off'\n" +
-		"stops a running tray and removes it from login.",
+		"stops a running tray within 30 seconds and removes it from login.",
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if !tray.Available {
@@ -33,12 +33,8 @@ var trayCmd = &cobra.Command{
 		}
 		return tray.Run(tray.Deps{
 			Interval: trayInterval,
-			Enabled: func() bool {
-				on := true // if the setting cannot be read, keep running
-				withStore(func(s *core.Store) (err error) { on, err = s.ModuleOn(core.ModuleTray); return err })
-				return on
-			},
-			Check: func() error { _, err := runCheck(); return err },
+			Enabled:  trayEnabled,
+			Check:    func() error { _, err := runCheck(); return err },
 			Nudges: func() (ns []core.Status, err error) {
 				err = withStore(func(s *core.Store) error { ns, err = s.Nudges(); return err })
 				return ns, err
@@ -51,6 +47,15 @@ var trayCmd = &cobra.Command{
 			Log:  func(err error) { fmt.Fprintf(os.Stderr, "proz tray: %v\n", err) },
 		})
 	},
+}
+
+// trayEnabled reads the tray switch; if it cannot be read, keep running.
+func trayEnabled() bool {
+	on := true
+	if err := withStore(func(s *core.Store) (err error) { on, err = s.ModuleOn(core.ModuleTray); return err }); err != nil {
+		return true
+	}
+	return on
 }
 
 // resumeDetached opens a project from the tray, where there is no terminal:
