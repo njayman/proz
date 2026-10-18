@@ -164,6 +164,10 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 	} else if brain != "" {
 		ignore = append(ignore, resolve(brain))
 	}
+	prompts, err := s.ModuleOn(ModulePrompts)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]Status, 0, len(found))
 	for _, r := range found {
 		st := r.st
@@ -233,7 +237,7 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 		if work.uncommitted > 0 {
 			st.Note.Lines = append(st.Note.Lines, plural("Uncommitted: %d file", work.uncommitted))
 		}
-		if hasClaude && cl.prompt != "" {
+		if hasClaude && prompts && cl.prompt != "" {
 			st.Note.Lines = append(st.Note.Lines, "Last prompt: "+cl.prompt)
 		}
 		if missing {

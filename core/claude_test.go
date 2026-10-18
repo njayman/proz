@@ -59,6 +59,14 @@ func TestClaudeSessionInTheProjectIsActivityAndLastPromptJoinsTheNote(t *testing
 	if got := st.Note.Lines[len(st.Note.Lines)-1]; got != "Last prompt: wire the signup form to the api" {
 		t.Fatalf("got %q in %q", got, st.Note.Lines)
 	}
+
+	if err := s.SetModule(ModulePrompts, false); err != nil {
+		t.Fatal(err)
+	}
+	st = status(t, s) // the session still counts; only its text stays private
+	if !st.LastActivity.Equal(t0.Add(5*day)) || strings.Contains(st.Note.Full(), "signup") {
+		t.Fatalf("prompts off: %v %q", st.LastActivity, st.Note.Lines)
+	}
 }
 
 func TestOnlyTheLatestSessionCountsAndLongPromptsAreTruncated(t *testing.T) {

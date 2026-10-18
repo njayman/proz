@@ -121,9 +121,9 @@ Runs one check: shows an OS notification for each project that just went quiet, 
 
 On Linux the notification goes through `notify-send`, which needs your desktop session; from cron you may need `DBUS_SESSION_BUS_ADDRESS` set. `proz test notification` shows a sample to confirm it works.
 
-### `proz config notifications|tray|email|brain [on|off]`
+### `proz config notifications|tray|email|brain|prompts [on|off]`
 
-Shows or switches a module. Notifications are on by default; the tray, email and brain stay off until you enable or configure them.
+Shows or switches a module. Notifications are on by default; the tray, email and brain stay off until you enable or configure them. Prompts is on: notes show your last Claude Code prompt in the project, and so do notifications, the email digest and brain notes. Switch it off to keep prompts private; the session still counts as activity.
 
 ### `proz config brain-path [dir]` and `proz brain [project] [--json]`
 
