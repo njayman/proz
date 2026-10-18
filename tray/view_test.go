@@ -81,3 +81,27 @@ func TestSnoozeOffersFiveLengthsShortestFirst(t *testing.T) {
 		t.Fatalf("got %+v", SnoozeChoices)
 	}
 }
+
+func TestPickingASnoozeLengthSnoozesThatManyDaysAndRefreshesTheMenu(t *testing.T) {
+	snoozed := map[int64]int{}
+	d := Deps{
+		Snooze: func(id int64, days int) error { snoozed[id] = days; return nil },
+		Nudges: func() ([]core.Status, error) {
+			var ns []core.Status
+			for _, n := range []core.Status{nudge(1, "web", "Quiet for 8 days"), nudge(2, "api", "Quiet for 9 days")} {
+				if _, ok := snoozed[n.ID]; !ok {
+					ns = append(ns, n)
+				}
+			}
+			return ns, nil
+		},
+		Log: func(err error) { t.Error(err) },
+	}
+	views := make(chan View, 1)
+	pick := snoozeAction(d, 1, SnoozeChoices[3].Days, func() { v, _ := snapshot(d); views <- v })
+	pick()
+	v := <-views
+	if snoozed[1] != 14 || len(v.Items) != 1 || v.Items[0].ID != 2 {
+		t.Fatalf("snoozed %v, menu %+v", snoozed, v.Items)
+	}
+}

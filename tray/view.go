@@ -60,6 +60,19 @@ func Render(nudges []core.Status) View {
 	return v
 }
 
+// act runs one menu action on a project, then refreshes the menu.
+func act(d Deps, fn func(int64) error, id int64, show func()) {
+	if err := fn(id); err != nil {
+		d.Log(err)
+	}
+	go show()
+}
+
+// snoozeAction is what picking a Snooze length does.
+func snoozeAction(d Deps, id int64, days int, show func()) func() {
+	return func() { act(d, func(id int64) error { return d.Snooze(id, days) }, id, show) }
+}
+
 // snapshot is what the tray should show now. On error it still returns a
 // view, one that says what went wrong, so the tray keeps its icon and menu.
 func snapshot(d Deps) (View, error) {
