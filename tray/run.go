@@ -46,7 +46,10 @@ func onReady(d Deps) {
 		for _, it := range v.Items {
 			m := systray.AddMenuItem(it.Label, "")
 			on(m.AddSubMenuItem("Resume", "Open it with its program"), done, func() { act(d, d.Resume, it.ID, show) })
-			on(m.AddSubMenuItem("Snooze 7 days", "Remind me in a week if still quiet"), done, func() { act(d, d.Snooze, it.ID, show) })
+			snooze := m.AddSubMenuItem("Snooze", "Remind me later if still quiet")
+			for _, c := range SnoozeChoices {
+				on(snooze.AddSubMenuItem(c.Label, ""), done, snoozeAction(d, it.ID, c.Days, show))
+			}
 			on(m.AddSubMenuItem("Drop", "Archive until there is new activity"), done, func() { act(d, d.Drop, it.ID, show) })
 		}
 		if len(v.Items) > 0 {
@@ -85,11 +88,4 @@ func on(m *systray.MenuItem, done chan struct{}, fn func()) {
 			}
 		}
 	}()
-}
-
-func act(d Deps, fn func(int64) error, id int64, show func()) {
-	if err := fn(id); err != nil {
-		d.Log(err)
-	}
-	go show()
 }

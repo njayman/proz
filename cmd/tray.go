@@ -40,13 +40,16 @@ var trayCmd = &cobra.Command{
 				return ns, err
 			},
 			Resume: resumeDetached,
-			Snooze: func(id int64) error {
-				return withStore(func(s *core.Store) error { return s.Snooze(id, 7*24*time.Hour) })
-			},
-			Drop: func(id int64) error { return withStore(func(s *core.Store) error { return s.Drop(id) }) },
-			Log:  func(err error) { fmt.Fprintf(os.Stderr, "proz tray: %v\n", err) },
+			Snooze: traySnooze,
+			Drop:   func(id int64) error { return withStore(func(s *core.Store) error { return s.Drop(id) }) },
+			Log:    func(err error) { fmt.Fprintf(os.Stderr, "proz tray: %v\n", err) },
 		})
 	},
+}
+
+// traySnooze snoozes a project from the tray's Snooze submenu.
+func traySnooze(id int64, days int) error {
+	return withStore(func(s *core.Store) error { return s.Snooze(id, time.Duration(days)*24*time.Hour) })
 }
 
 // trayEnabled reads the tray switch; if it cannot be read, keep running.

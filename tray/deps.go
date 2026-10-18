@@ -14,7 +14,7 @@ type Deps struct {
 	Check    func() error                  // one iteration: notify what just went quiet
 	Nudges   func() ([]core.Status, error) // what the menu lists
 	Resume   func(id int64) error
-	Snooze   func(id int64) error
+	Snooze   func(id int64, days int) error
 	Drop     func(id int64) error
 	Log      func(error)
 }

@@ -603,3 +603,25 @@ func TestTrayStaysOnUnlessTheSettingSaysOff(t *testing.T) {
 		t.Fatal("tray off must read as off")
 	}
 }
+
+func TestTraySnoozeHidesTheProjectForTheChosenDays(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	var p core.Project
+	if err := withStore(func(s *core.Store) (err error) {
+		if err = s.AddProject(core.Project{Name: "web", Path: t.TempDir()}); err != nil {
+			return err
+		}
+		p, err = s.ProjectNamed("web")
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := traySnooze(p.ID, 14); err != nil {
+		t.Fatal(err)
+	}
+	var st core.Status
+	withStore(func(s *core.Store) (err error) { st, err = s.Status(p.ID); return err })
+	if d := st.SnoozedUntil.Sub(now()); d < 14*24*time.Hour-time.Minute || d > 14*24*time.Hour {
+		t.Fatalf("snoozed for %v", d)
+	}
+}

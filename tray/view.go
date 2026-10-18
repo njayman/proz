@@ -29,6 +29,16 @@ type Item struct {
 
 const maxLabel = 60
 
+// SnoozeChoice is one length in a project's Snooze submenu.
+type SnoozeChoice struct {
+	Label string
+	Days  int
+}
+
+// SnoozeChoices are the Snooze submenu, shortest first. ponytail: fixed;
+// 'proz snooze <project> <days>' covers any other length.
+var SnoozeChoices = []SnoozeChoice{{"Tomorrow", 1}, {"3 days", 3}, {"1 week", 7}, {"2 weeks", 14}, {"1 month", 30}}
+
 // Render turns the current nudges into what the tray shows.
 func Render(nudges []core.Status) View {
 	v := View{Dot: len(nudges) > 0}
@@ -48,6 +58,19 @@ func Render(nudges []core.Status) View {
 		v.Items = append(v.Items, Item{ID: n.ID, Label: string(label)})
 	}
 	return v
+}
+
+// act runs one menu action on a project, then refreshes the menu.
+func act(d Deps, fn func(int64) error, id int64, show func()) {
+	if err := fn(id); err != nil {
+		d.Log(err)
+	}
+	go show()
+}
+
+// snoozeAction is what picking a Snooze length does.
+func snoozeAction(d Deps, id int64, days int, show func()) func() {
+	return func() { act(d, func(id int64) error { return d.Snooze(id, days) }, id, show) }
 }
 
 // snapshot is what the tray should show now. On error it still returns a
