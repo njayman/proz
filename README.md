@@ -103,7 +103,7 @@ The answers to a nudge. `resume` prints the left-off note and opens the project'
 
 ### `proz tray`
 
-Runs in the background with a tray icon: a ring, with a red dot while any project is quiet. It checks every 15 minutes and notifies once per quiet stretch, like `proz check`. Its menu lists each quiet project with its short note; each has Resume (opens its first program, no terminal), Snooze 7 days and Drop. `proz tray autostart on|off` starts it at login (an autostart entry on Linux, a LaunchAgent on macOS, a registry Run value on Windows). `proz config tray off` removes it from login, and a running tray quits at its next refresh.
+Runs in the background with a tray icon: a ring, with a red dot while any project is quiet. It checks every 15 minutes and notifies once per quiet stretch, like `proz check`. Its menu lists each quiet project with its short note; each has Resume (opens its first program, no terminal), Snooze 7 days and Drop. `proz tray autostart on|off` starts it at login (an autostart entry on Linux, a LaunchAgent on macOS, a registry Run value on Windows). `proz config tray off` removes it from login, and a running tray quits within 30 seconds.
 
 Release binaries include the tray. Building yourself: `go build -tags tray .` (on macOS this needs cgo). A build without the tag works fully, minus the tray. On GNOME the icon needs the AppIndicator extension.
 

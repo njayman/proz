@@ -56,6 +56,7 @@ func onReady(d Deps) {
 		on(systray.AddMenuItem("Quit proz tray", ""), done, systray.Quit)
 	}
 	show() // icon and menu first, then the slower check
+	go watchOff(d.Enabled, offPoll, systray.Quit)
 	go func() {
 		check(d, show)
 		for range time.Tick(d.Interval) {
