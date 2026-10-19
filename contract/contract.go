@@ -65,6 +65,12 @@ func NewStatus(st core.Status, milestones []core.Milestone) Status {
 	return out
 }
 
+// TerminalSetting is the terminal proz opens terminal programs in, as
+// 'proz config terminal --json' prints it. Empty means detect.
+type TerminalSetting struct {
+	Terminal string `json:"terminal"`
+}
+
 // BrainNote is a project's note in the brain, as 'proz brain --json' and the
 // read_brain_note tool return it: the whole file, the user's text included.
 type BrainNote struct {

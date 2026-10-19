@@ -69,11 +69,9 @@ func loadRecentPrograms() (programs []string) {
 // launch opens project with program. In a terminal the program runs there;
 // without one (rofi, wofi) core opens terminal programs in the user's terminal.
 func launch(project Project, program string) error {
-	tty, ttyErr := os.OpenFile("/dev/tty", os.O_RDWR, 0)
-	if ttyErr == nil {
-		defer tty.Close()
-	}
-	attached := ttyErr == nil || term.IsTerminal(os.Stdin.Fd())
+	// a controlling tty alone is not enough: a session started from a VT
+	// login leaves one on rofi and its children, where nobody sees it
+	attached := term.IsTerminal(os.Stdin.Fd()) || term.IsTerminal(os.Stdout.Fd())
 	var cmd *exec.Cmd
 	if err := withStore(func(s *core.Store) (err error) {
 		cmd, err = s.Launch(project, program, attached)
@@ -84,7 +82,8 @@ func launch(project Project, program string) error {
 	if !attached {
 		return startDetached(cmd)
 	}
-	if tty != nil {
+	if tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0); err == nil {
+		defer tty.Close()
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = tty, tty, tty
 	} else {
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
@@ -92,8 +91,9 @@ func launch(project Project, program string) error {
 	return cmd.Run()
 }
 
-// startDetached starts cmd on its own and reaps it when it exits, so no
-// zombie lingers.
+// startDetached starts cmd on its own. In a long-running process (the tray)
+// it is reaped when it exits, so no zombie lingers; when proz exits first,
+// init reaps it.
 func startDetached(cmd *exec.Cmd) error {
 	if err := cmd.Start(); err != nil {
 		return err

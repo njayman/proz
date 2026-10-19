@@ -11,9 +11,10 @@ import (
 
 // ErrNoTerminal means no terminal emulator could be found to open a terminal
 // program in.
-var ErrNoTerminal = errors.New("set one with: proz config terminal <command>")
+var ErrNoTerminal = errors.New("set the terminal setting with: proz config terminal <command>")
 
 // terminalPrograms run in a terminal; anything else is treated as a GUI program.
+// ponytail: a fixed list; #68 adds .desktop Terminal=true and per-program settings.
 var terminalPrograms = map[string]bool{
 	"vi": true, "vim": true, "nvim": true, "hx": true, "helix": true, "nano": true,
 	"micro": true, "kak": true, "lazygit": true, "tig": true,
@@ -36,11 +37,12 @@ var knownTerminals = []struct {
 	{"xfce4-terminal", []string{"-x"}}, {"xterm", []string{"-e"}},
 }
 
-// runForm is the command that runs a program in terminal t. A single word
-// gets that terminal's own form; several words are used as written.
-func runForm(t string) []string {
+// runForm is the command that runs a program in terminal t, which may carry
+// its own flags: the terminal's own form is appended. With exact, a setting
+// of several words is used as written instead.
+func runForm(t string, exact bool) []string {
 	f := strings.Fields(t)
-	if len(f) != 1 {
+	if exact && len(f) > 1 {
 		return f
 	}
 	for _, k := range knownTerminals {
@@ -51,24 +53,24 @@ func runForm(t string) []string {
 	return append(f, "-e")
 }
 
-// terminal finds the user's terminal emulator and returns the command that
-// runs a program in it. ponytail: Linux order without the desktop steps
+// runInTerminal finds the user's terminal emulator and returns the command
+// that runs a program in it. ponytail: Linux order without the desktop steps
 // (xdg-terminal-exec, KDE, Sway, x-terminal-emulator); #67 adds them.
-func (s *Store) terminal() ([]string, error) {
+func (s *Store) runInTerminal() ([]string, error) {
 	set, err := s.Terminal()
 	if err != nil {
 		return nil, err
 	}
-	for _, t := range []string{set, os.Getenv("TERMINAL")} {
+	for i, t := range []string{set, os.Getenv("TERMINAL")} {
 		if f := strings.Fields(t); len(f) > 0 {
 			if _, err := exec.LookPath(f[0]); err == nil {
-				return runForm(t), nil
+				return runForm(t, i == 0), nil
 			}
 		}
 	}
 	for _, k := range knownTerminals {
 		if _, err := exec.LookPath(k.name); err == nil {
-			return runForm(k.name), nil
+			return runForm(k.name, false), nil
 		}
 	}
 	return nil, ErrNoTerminal

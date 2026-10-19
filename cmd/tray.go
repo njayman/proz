@@ -74,6 +74,7 @@ func resumeDetached(id int64) error {
 	return err
 }
 
+// resumeTray opens a project's first program, with no terminal attached.
 func resumeTray(id int64) error {
 	var cmd *exec.Cmd
 	var p core.Project

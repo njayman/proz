@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/njayman/proz/autostart"
+	"github.com/njayman/proz/contract"
 	"github.com/njayman/proz/core"
 	"github.com/spf13/cobra"
 )
@@ -86,7 +87,7 @@ var terminalCmd = &cobra.Command{
 				return err
 			}
 			if terminalJSON {
-				return printJSON(map[string]string{"terminal": t})
+				return printJSON(contract.TerminalSetting{Terminal: t})
 			}
 			if len(args) == 1 {
 				return nil

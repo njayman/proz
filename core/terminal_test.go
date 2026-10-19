@@ -91,13 +91,17 @@ func TestTerminalSettingBeatsTERMINAL(t *testing.T) {
 	}
 
 	// several words are used as written
-	s.SetTerminal("myterm --hold -x")
+	if err := s.SetTerminal("myterm --hold -x"); err != nil {
+		t.Fatal(err)
+	}
 	if got, want := launchArgs(t, s, p, "claude", false), []string{"myterm", "--hold", "-x", "claude", p.Path}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 
 	// empty goes back to detecting
-	s.SetTerminal("")
+	if err := s.SetTerminal(""); err != nil {
+		t.Fatal(err)
+	}
 	if got, err := s.Terminal(); err != nil || got != "" {
 		t.Fatalf("cleared setting: got %q, %v", got, err)
 	}
@@ -131,5 +135,16 @@ func TestNoTerminalNamesTheSettingAndStillCountsAsActivity(t *testing.T) {
 	st, err := s.Status(p.ID)
 	if err != nil || !st.LastActivity.Equal(t0.Add(5*day)) {
 		t.Fatalf("want the launch recorded, got %v, %v", st.LastActivity, err)
+	}
+}
+
+func TestTERMINALWithFlagsStillGetsARunForm(t *testing.T) {
+	fakePath(t, "alacritty")
+	t.Setenv("TERMINAL", "alacritty --class work")
+	s := open(t, t.TempDir())
+	p := project(t, s)
+
+	if got, want := launchArgs(t, s, p, "nvim", false), []string{"alacritty", "--class", "work", "-e", "nvim", p.Path}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
 	}
 }
