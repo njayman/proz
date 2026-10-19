@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"database/sql"
+	"debug/pe"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 )
@@ -47,7 +49,7 @@ func (s *Store) NeedsTerminal(program string) (NeedsTerminal, error) {
 	if !errors.Is(err, sql.ErrNoRows) {
 		return NeedsTerminal{}, err
 	}
-	return NeedsTerminal{On: desktopSaysTerminal(name) || terminalPrograms[name]}, nil
+	return NeedsTerminal{On: desktopSaysTerminal(name) || consoleProgram(program) || terminalPrograms[strings.TrimSuffix(name, ".exe")]}, nil
 }
 
 // SetNeedsTerminal sets whether program runs in a terminal; nil goes back
@@ -64,6 +66,32 @@ func (s *Store) SetNeedsTerminal(program string, on *bool) error {
 	}
 	_, err := s.db.Exec(`INSERT OR REPLACE INTO settings (workspace_id, key, value) VALUES (?, ?, ?)`, DefaultWorkspace, key, v)
 	return err
+}
+
+// consoleProgram reports whether program is a Windows console executable,
+// from the subsystem in its header. Windows only.
+func consoleProgram(program string) bool {
+	if goos != "windows" {
+		return false
+	}
+	path, err := exec.LookPath(program)
+	if err != nil {
+		if path, err = exec.LookPath(program + ".exe"); err != nil {
+			return false
+		}
+	}
+	f, err := pe.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	switch h := f.OptionalHeader.(type) {
+	case *pe.OptionalHeader64:
+		return h.Subsystem == pe.IMAGE_SUBSYSTEM_WINDOWS_CUI
+	case *pe.OptionalHeader32:
+		return h.Subsystem == pe.IMAGE_SUBSYSTEM_WINDOWS_CUI
+	}
+	return false
 }
 
 // desktopSaysTerminal reports whether an installed .desktop entry runs
@@ -118,6 +146,9 @@ func runForm(t, dir string, exact bool) []string {
 			}
 		}
 	}
+	if strings.TrimSuffix(strings.ToLower(name), ".exe") == "wt" {
+		return append(f, "new-tab", "-d", dir)
+	}
 	if name == "xdg-terminal-exec" {
 		// no --dir: hand-written wrappers pass it on as the program; the working folder covers it
 		return f
@@ -142,17 +173,19 @@ func (s *Store) LaunchTerminal(p Project, attached bool) (*exec.Cmd, error) {
 	if err := s.recordLaunch(p); err != nil || p.Path == "" {
 		return nil, err
 	}
-	var args []string
-	if attached {
-		args = []string{cmp.Or(os.Getenv("SHELL"), os.Getenv("ComSpec"), "/bin/sh")}
-	} else {
+	args := []string{cmp.Or(os.Getenv("SHELL"), os.Getenv("ComSpec"), "/bin/sh")}
+	newConsole := false
+	if !attached {
 		var err error
-		if args, err = s.runInTerminal(p.Path, nil); err != nil {
+		if args, newConsole, err = s.runInTerminal(p.Path, nil); err != nil {
 			return nil, fmt.Errorf("no terminal found to open %s in; %w", p.Name, err)
 		}
 	}
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = p.Path
+	if newConsole {
+		setNewConsole(cmd)
+	}
 	return cmd, nil
 }
 
@@ -161,19 +194,29 @@ func (s *Store) LaunchTerminal(p Project, attached bool) (*exec.Cmd, error) {
 // terminal. Linux order: the setting, xdg-terminal-exec, $TERMINAL, KDE's
 // default, Sway's $term, x-terminal-emulator, then known terminals. A step
 // naming a program that is not on PATH is skipped.
-func (s *Store) runInTerminal(dir string, program []string) ([]string, error) {
+//
+// On Windows, with no setting, it returns the program itself (or the
+// command shell) and newConsole: started with a new console, Windows hands
+// it to the user's default terminal.
+func (s *Store) runInTerminal(dir string, program []string) (args []string, newConsole bool, err error) {
 	set, err := s.Terminal()
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	steps := []func() string{func() string { return set }}
-	if goos == "darwin" {
+	if goos == "darwin" || goos == "windows" {
 		if f := strings.Fields(set); len(f) > 0 {
 			if _, err := exec.LookPath(f[0]); err == nil {
-				return withProgram(runForm(set, dir, true), program), nil
+				return withProgram(runForm(set, dir, true), program), false, nil
 			}
 		}
-		return macTerminal(dir, program), nil
+		if goos == "darwin" {
+			return macTerminal(dir, program), false, nil
+		}
+		if len(program) == 0 {
+			program = []string{cmp.Or(os.Getenv("ComSpec"), "cmd.exe")}
+		}
+		return program, true, nil
 	}
 	steps = append(steps,
 		func() string { return "xdg-terminal-exec" },
@@ -189,17 +232,24 @@ func (s *Store) runInTerminal(dir string, program []string) ([]string, error) {
 		t := step()
 		if f := strings.Fields(t); len(f) > 0 {
 			if _, err := exec.LookPath(f[0]); err == nil {
-				return withProgram(runForm(t, dir, i == 0), program), nil
+				return withProgram(runForm(t, dir, i == 0), program), false, nil
 			}
 		}
 	}
-	return nil, ErrNoTerminal
+	return nil, false, ErrNoTerminal
 }
 
 // withProgram appends program to a terminal's run form; with no program it
 // drops the separator that would have come before it.
 func withProgram(term, program []string) []string {
 	if len(program) > 0 {
+		if strings.TrimSuffix(strings.ToLower(filepath.Base(term[0])), ".exe") == "wt" {
+			// Windows Terminal splits its command line on ;
+			program = slices.Clone(program)
+			for i, a := range program {
+				program[i] = strings.ReplaceAll(a, ";", `\;`)
+			}
+		}
 		return append(term, program...)
 	}
 	if last := term[len(term)-1]; len(term) > 1 && (last == "--" || last == "-e" || last == "-x") {

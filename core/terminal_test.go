@@ -4,14 +4,22 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
 )
 
-// fakePath makes PATH hold only fake executables with these names.
+// fakePath makes core behave as on Linux, with PATH holding only fake
+// executables with these names. Fake scripts need a Unix system to run.
 func fakePath(t *testing.T, names ...string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("fake terminals are shell scripts")
+	}
+	was := goos
+	goos = "linux"
+	t.Cleanup(func() { goos = was })
 	dir := t.TempDir()
 	for _, n := range names {
 		if err := os.WriteFile(filepath.Join(dir, n), []byte("#!/bin/sh\n"), 0755); err != nil {
