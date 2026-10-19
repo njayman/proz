@@ -178,6 +178,7 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 		work    workState
 		cl      claudeState
 		hasCl   bool
+		slow    bool // git hit the limit
 	}
 	sig := make([]signals, len(found))
 	var wg sync.WaitGroup
@@ -200,6 +201,7 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 					x.work = readWork(ctx, path, now, ignore)
 				}
 			}
+			x.slow = ctx.Err() != nil
 			x.cl, x.hasCl = readClaude(path)
 		}()
 	}
@@ -209,14 +211,15 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 	for i, r := range found {
 		st := r.st
 		st.LastActivity = time.Unix(r.recorded, 0)
-		g, hasGit, missing, work := sig[i].g, sig[i].hasGit, sig[i].missing, sig[i].work
+		x := sig[i]
+		g, hasGit, missing, work := x.g, x.hasGit, x.missing, x.work
 		if hasGit && g.when.After(st.LastActivity) {
 			st.LastActivity = g.when
 		}
 		if work.when.After(st.LastActivity) {
 			st.LastActivity = work.when
 		}
-		cl, hasClaude := sig[i].cl, sig[i].hasCl
+		cl, hasClaude := x.cl, x.hasCl
 		if hasClaude && cl.when.After(st.LastActivity) {
 			st.LastActivity = cl.when
 		}
@@ -263,6 +266,9 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 		}
 		if work.uncommitted > 0 {
 			st.Note.Lines = append(st.Note.Lines, plural("Uncommitted: %d file", work.uncommitted))
+		}
+		if x.slow {
+			st.Note.Lines = append(st.Note.Lines, "Git too slow to read changes")
 		}
 		if hasClaude && prompts && cl.prompt != "" {
 			st.Note.Lines = append(st.Note.Lines, "Last prompt: "+cl.prompt)

@@ -37,16 +37,16 @@ type workState struct {
 func readWork(ctx context.Context, dir string, now time.Time, ignore []string) (w workState) {
 	// one call: the repository root, then dir's path inside it
 	out, err := gitCmd(ctx, dir, "rev-parse", "--show-toplevel", "--show-prefix").Output()
-	if ctx.Err() != nil {
-		return w // git is too slow here; walking the folder would be too
-	}
-	if err != nil {
+	if err != nil { // not a repository, or git too slow: the newest file, capped at maxWalk
 		return walkNewest(dir, now, ignore)
 	}
 	top, prefix, _ := strings.Cut(strings.TrimRight(string(out), "\n"), "\n")
 	cmd := gitCmd(ctx, dir, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".")
 	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0") // read only: never contend with the user's git
 	status, err := cmd.Output()
+	if ctx.Err() != nil {
+		return walkNewest(dir, now, ignore)
+	}
 	if err != nil {
 		return w
 	}

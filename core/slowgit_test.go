@@ -80,7 +80,26 @@ func TestSlowProjectsDoNotAddUp(t *testing.T) {
 
 	start := time.Now()
 	all, err := s.Statuses()
-	if took := time.Since(start); err != nil || len(all) != 3 || took > 550*time.Millisecond {
-		t.Fatalf("three slow projects took %v (%d, %v), want under twice the 300ms limit", took, len(all), err)
+	if took := time.Since(start); err != nil || len(all) != 3 || took > 800*time.Millisecond {
+		t.Fatalf("three slow projects took %v (%d, %v), want well under three limits in a row (900ms)", took, len(all), err)
+	}
+}
+
+func TestSlowGitStillSeesRecentEditsAndSaysSo(t *testing.T) {
+	c := &clock{t0}
+	s := openAt(t, c)
+	slowGit(t)
+	dir := t.TempDir()
+	s.AddProject(Project{Name: "lfs", Path: dir})
+	p := onlyProject(t, s)
+	touch(t, dir, "main.go", t0.Add(2*day))
+	c.t = t0.Add(3 * day)
+
+	st, err := s.Status(p.ID)
+	if err != nil || !st.LastActivity.Equal(t0.Add(2*day)) {
+		t.Fatalf("want the edit as activity, got %v, %v", st.LastActivity, err)
+	}
+	if !strings.Contains(st.Note.Full(), "Git too slow to read changes") {
+		t.Fatalf("want the note to say git was slow:\n%s", st.Note.Full())
 	}
 }

@@ -70,9 +70,9 @@ func onReady(d Deps) {
 	mu.Lock()
 	render(View{Loading: true, Tooltip: "proz: checking projects"})
 	mu.Unlock()
-	go show()
 	go watchOff(d.Enabled, offPoll, systray.Quit)
 	go func() {
+		show() // projects first, then the slower check, one read at a time
 		check(d, show)
 		for range time.Tick(d.Interval) {
 			check(d, show)
