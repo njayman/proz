@@ -19,7 +19,9 @@ var resumeCmd = &cobra.Command{
 	Short: "Print where a project left off, then open it with its program",
 	Long: "Print the project's left-off note, then launch its configured program\n" +
 		"(asking which when there are several). With no name, uses the project\n" +
-		"containing the current directory.",
+		"containing the current directory. --terminal opens a terminal in the\n" +
+		"project's folder instead: your shell here when run in a terminal, else\n" +
+		"a new terminal window.",
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		p, err := resolveProject(args)
@@ -38,9 +40,14 @@ var resumeCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, "'%s' is an idea with no folder yet. Run 'proz add' in its folder to attach one.\n", p.Name)
 			return launch(p, "") // still counts as picking it back up
 		}
+		if resumeTerminal {
+			return launchTerminal(p)
+		}
 		return launch(p, chooseProgram(p))
 	},
 }
+
+var resumeTerminal bool
 
 var snoozeCmd = &cobra.Command{
 	Use:   "snooze [project] [days | --until YYYY-MM-DD]",
@@ -171,5 +178,6 @@ func respond(args []string, fn func(*core.Store, int64) error, done string) erro
 func init() {
 	archivedCmd.Flags().BoolVar(&archivedJSON, "json", false, "print archived projects as JSON")
 	snoozeCmd.Flags().StringVar(&snoozeUntil, "until", "", "snooze to the start of this local date (YYYY-MM-DD)")
+	resumeCmd.Flags().BoolVar(&resumeTerminal, "terminal", false, "open a terminal in the project's folder instead of its program")
 	rootCmd.AddCommand(resumeCmd, snoozeCmd, dropCmd, restoreCmd, archivedCmd)
 }

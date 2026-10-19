@@ -69,12 +69,24 @@ func loadRecentPrograms() (programs []string) {
 // launch opens project with program. In a terminal the program runs there;
 // without one (rofi, wofi) core opens terminal programs in the user's terminal.
 func launch(project Project, program string) error {
+	return runLaunch(func(s *core.Store, attached bool) (*exec.Cmd, error) { return s.Launch(project, program, attached) })
+}
+
+// launchTerminal opens a terminal in project's folder: the shell here when
+// in a terminal, else a new terminal window.
+func launchTerminal(project Project) error {
+	return runLaunch(func(s *core.Store, attached bool) (*exec.Cmd, error) { return s.LaunchTerminal(project, attached) })
+}
+
+// runLaunch gets a launch command from core and runs it, attached to this
+// terminal if there is one.
+func runLaunch(get func(s *core.Store, attached bool) (*exec.Cmd, error)) error {
 	// a controlling tty alone is not enough: a session started from a VT
 	// login leaves one on rofi and its children, where nobody sees it
 	attached := term.IsTerminal(os.Stdin.Fd()) || term.IsTerminal(os.Stdout.Fd())
 	var cmd *exec.Cmd
 	if err := withStore(func(s *core.Store) (err error) {
-		cmd, err = s.Launch(project, program, attached)
+		cmd, err = get(s, attached)
 		return err
 	}); err != nil || cmd == nil {
 		return err

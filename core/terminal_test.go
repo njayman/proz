@@ -387,3 +387,58 @@ func TestPerProgramSettingBeatsEverything(t *testing.T) {
 		t.Fatalf("cleared: got %+v, %v", got, err)
 	}
 }
+
+func TestTerminalOnlyOpensTheTerminalInTheProjectFolder(t *testing.T) {
+	for term, want := range map[string][]string{
+		"wezterm":           {"wezterm", "start", "--cwd", "DIR"},
+		"alacritty":         {"alacritty", "--working-directory", "DIR"},
+		"gnome-terminal":    {"gnome-terminal", "--working-directory=DIR"},
+		"xterm":             {"xterm"},
+		"xdg-terminal-exec": {"xdg-terminal-exec"},
+	} {
+		t.Run(term, func(t *testing.T) {
+			fakePath(t, term)
+			t.Setenv("TERMINAL", term)
+			c := &clock{t0}
+			s := openAt(t, c)
+			p := project(t, s)
+			c.t = t0.Add(5 * day)
+
+			cmd, err := s.LaunchTerminal(p, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := range want {
+				want[i] = strings.ReplaceAll(want[i], "DIR", p.Path)
+			}
+			if !reflect.DeepEqual(cmd.Args, want) || cmd.Dir != p.Path {
+				t.Fatalf("got %v in %q, want %v in %q", cmd.Args, cmd.Dir, want, p.Path)
+			}
+			if st, _ := s.Status(p.ID); !st.LastActivity.Equal(t0.Add(5 * day)) {
+				t.Fatalf("want the launch recorded, got %v", st.LastActivity)
+			}
+		})
+	}
+}
+
+func TestTerminalOnlyWithATerminalStartsTheShell(t *testing.T) {
+	fakePath(t, "xterm")
+	t.Setenv("SHELL", "/bin/zsh")
+	s := open(t, t.TempDir())
+	p := project(t, s)
+
+	cmd, err := s.LaunchTerminal(p, true)
+	if err != nil || !reflect.DeepEqual(cmd.Args, []string{"/bin/zsh"}) || cmd.Dir != p.Path {
+		t.Fatalf("got %v in %q, %v", cmd.Args, cmd.Dir, err)
+	}
+}
+
+func TestTerminalOnlyWithNoTerminalNamesTheSetting(t *testing.T) {
+	fakePath(t)
+	s := open(t, t.TempDir())
+	p := project(t, s)
+
+	if _, err := s.LaunchTerminal(p, false); err == nil || !strings.Contains(err.Error(), "proz config terminal") {
+		t.Fatalf("want an error naming the setting, got %v", err)
+	}
+}

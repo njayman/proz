@@ -1,10 +1,12 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -167,6 +169,33 @@ func runForm(t, dir string, exact bool) []string {
 		f = append(f, strings.ReplaceAll(a, "DIR", dir))
 	}
 	return f
+}
+
+// LaunchTerminal records a launch of p and returns the command that opens a
+// terminal in its folder: the user's shell when the caller has a terminal,
+// else a new window of the user's terminal emulator. An idea with no folder
+// returns a nil command.
+func (s *Store) LaunchTerminal(p Project, attached bool) (*exec.Cmd, error) {
+	if _, err := s.Launch(p, "", attached); err != nil || p.Path == "" {
+		return nil, err
+	}
+	var args []string
+	if attached {
+		args = []string{cmp.Or(os.Getenv("SHELL"), os.Getenv("ComSpec"), "/bin/sh")}
+	} else {
+		term, err := s.runInTerminal(p.Path)
+		if err != nil {
+			return nil, fmt.Errorf("no terminal found to open %s in; %w", p.Name, err)
+		}
+		// no program to run: drop the separator that would come before it
+		if last := term[len(term)-1]; len(term) > 1 && (last == "--" || last == "-e" || last == "-x") {
+			term = term[:len(term)-1]
+		}
+		args = term
+	}
+	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Dir = p.Path
+	return cmd, nil
 }
 
 // runInTerminal finds the user's terminal emulator and returns the command

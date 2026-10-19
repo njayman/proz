@@ -54,6 +54,7 @@ Every nudge asks the user one decision. Run these only when the user has made it
 
 ```bash
 proz resume [project]          # prints the left-off note, then opens the project's program
+proz resume [project] --terminal  # prints the note, then opens a terminal in the project's folder
 proz snooze [project] [days]   # hide the nudge for N days (7 by default); it returns if still quiet
 proz snooze [project] --until YYYY-MM-DD   # hide it until the start of that local day, for a date the user names
 proz drop [project]            # archive: no more nudges until any new activity revives it
