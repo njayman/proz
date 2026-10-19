@@ -332,14 +332,19 @@ func (s *Store) RecentPrograms() ([]string, error) {
 	return out, rows.Err()
 }
 
+// recordLaunch counts opening p as activity.
+func (s *Store) recordLaunch(p Project) error {
+	res, err := s.db.Exec(`UPDATE projects SET last_launch = ? WHERE id = ? AND workspace_id = ?`, s.now().Unix(), p.ID, DefaultWorkspace)
+	return foundOrErr(res, err)
+}
+
 // Launch records a launch of p (activity, even with no program) and program
 // as recently used, and returns the command that opens
 // p with it; the caller wires stdio and runs it. No program means nothing to
 // launch, so it returns a nil command. When the caller has no terminal
 // attached, a terminal program is wrapped in the user's terminal emulator.
 func (s *Store) Launch(p Project, program string, attached bool) (*exec.Cmd, error) {
-	res, err := s.db.Exec(`UPDATE projects SET last_launch = ? WHERE id = ? AND workspace_id = ?`, s.now().Unix(), p.ID, DefaultWorkspace)
-	if err := foundOrErr(res, err); err != nil {
+	if err := s.recordLaunch(p); err != nil {
 		return nil, err
 	}
 	if program == "" || p.Path == "" { // an idea has no folder to open yet

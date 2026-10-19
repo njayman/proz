@@ -351,11 +351,15 @@ func TestDesktopEntrySaysTerminalTrue(t *testing.T) {
 	fakePath(t, "xterm")
 	desktopEntry(t, "btop", "Exec=/usr/bin/btop %F\nTerminal=true")
 	desktopEntry(t, "gimp", "Exec=gimp-2.10 %U\nTerminal=false")
+	desktopEntry(t, "yazi", "# Terminal=false\nExec=env TERM=xterm-256color yazi\nTerminal=true")
 	s := open(t, t.TempDir())
 	p := project(t, s)
 
 	if got, want := launchArgs(t, s, p, "btop", false), []string{"xterm", "-e", "btop", p.Path}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
+	}
+	if got := launchArgs(t, s, p, "yazi", false); got[0] != "xterm" {
+		t.Fatalf("env prefix: got %v, want it wrapped", got)
 	}
 	if got := launchArgs(t, s, p, "gimp-2.10", false); got[0] != "gimp-2.10" {
 		t.Fatalf("Terminal=false: got %v, want it unwrapped", got)
