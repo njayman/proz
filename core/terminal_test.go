@@ -192,7 +192,9 @@ func TestLinuxOrderFirstPresentStepWins(t *testing.T) {
 			for _, later := range steps[i:] {
 				switch later {
 				case "setting":
-					s.SetTerminal("setterm")
+					if err := s.SetTerminal("setterm"); err != nil {
+						t.Fatal(err)
+					}
 				case "xdg-terminal-exec":
 					fakeExec(t, "xdg-terminal-exec", "")
 				case "$TERMINAL":
@@ -220,7 +222,9 @@ func TestStepsNamingMissingProgramsAreSkipped(t *testing.T) {
 	swaySession(t, "gone3")
 	s := open(t, t.TempDir())
 	p := project(t, s)
-	s.SetTerminal("gone0")
+	if err := s.SetTerminal("gone0"); err != nil {
+		t.Fatal(err)
+	}
 
 	if got, want := launchArgs(t, s, p, "nvim", false), []string{"x-terminal-emulator", "-e", "nvim", p.Path}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
@@ -294,5 +298,39 @@ func TestXTerminalEmulatorUsesTheRealTerminalsForm(t *testing.T) {
 
 	if got, want := launchArgs(t, s, p, "nvim", false), []string{"x-terminal-emulator", "start", "--cwd", p.Path, "--", "nvim", p.Path}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestKDEServiceIsLowercasedAndFallsBackToTheApplication(t *testing.T) {
+	fakePath(t, "ptyxis", "kdeterm", "xterm")
+	s := open(t, t.TempDir())
+	p := project(t, s)
+
+	kdeSession(t, "TerminalService=org.gnome.Ptyxis.desktop")
+	if got := launchArgs(t, s, p, "nvim", false); got[0] != "ptyxis" {
+		t.Fatalf("got %v, want ptyxis", got)
+	}
+	kdeSession(t, "TerminalService=gone.desktop\nTerminalApplication[$e]=kdeterm")
+	if got := launchArgs(t, s, p, "nvim", false); got[0] != "kdeterm" {
+		t.Fatalf("got %v, want kdeterm", got)
+	}
+}
+
+func TestSwayTermLastSetWinsAndVariablesExpand(t *testing.T) {
+	for config, want := range map[string]string{
+		`set $term foot\nset $term swayterm`:        "swayterm",
+		`set $myterm swayterm\nset\t$term\t$myterm`: "swayterm",
+		`set $term \"swayterm\"`:                    "swayterm",
+	} {
+		t.Run(want+" from "+config, func(t *testing.T) {
+			fakePath(t, "swayterm", "xterm")
+			t.Setenv("SWAYSOCK", "/run/sway.sock")
+			fakeExec(t, "swaymsg", `printf '%s' '{"config": "`+config+`"}'`)
+			s := open(t, t.TempDir())
+			p := project(t, s)
+			if got := launchArgs(t, s, p, "nvim", false); got[0] != want {
+				t.Fatalf("got %v, want %s", got, want)
+			}
+		})
 	}
 }

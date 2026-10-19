@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // ErrNoTerminal means no terminal emulator could be found to open a terminal
@@ -27,7 +29,9 @@ func needsTerminal(program string) bool {
 }
 
 // knownTerminals is the probe order, and how each runs a program in folder
-// DIR, from the terminal research's table. Any other terminal gets -e.
+// DIR, from the table in the terminal research (research/terminal-detection
+// branch). Any other terminal gets -e. ponytail: one fixed probe order; the
+// research suggests desktop-aware first (ptyxis, kgx on GNOME) if it matters.
 var knownTerminals = []struct {
 	name string
 	run  []string
@@ -57,8 +61,8 @@ func runForm(t, dir string, exact bool) []string {
 	if name == "x-terminal-emulator" {
 		// a Debian alternative: use the real terminal's form when it is a known one
 		if p, err := exec.LookPath(f[0]); err == nil {
-			if real, err := filepath.EvalSymlinks(p); err == nil {
-				name = filepath.Base(real)
+			if target, err := filepath.EvalSymlinks(p); err == nil {
+				name = filepath.Base(target)
 			}
 		}
 	}
@@ -111,9 +115,10 @@ func (s *Store) runInTerminal(dir string) ([]string, error) {
 }
 
 // kdeTerminal is KDE's default terminal from kdeglobals, as KIO reads it:
-// TerminalService (a .desktop id) before TerminalApplication (a command).
-// ponytail: a service id is taken as its last name part
-// (org.kde.konsole.desktop is konsole), not looked up.
+// TerminalService (a .desktop id) when it is on PATH, else
+// TerminalApplication (a command). ponytail: a service id is taken as its
+// last name part, lowercased (org.kde.konsole.desktop is konsole), not
+// looked up in its .desktop file.
 func kdeTerminal() string {
 	if !strings.Contains(os.Getenv("XDG_CURRENT_DESKTOP"), "KDE") {
 		return ""
@@ -138,26 +143,31 @@ func kdeTerminal() string {
 		if !ok || group != "[General]" {
 			continue
 		}
+		k, _, _ = strings.Cut(k, "[") // TerminalApplication[$e] is the same key
 		switch strings.TrimSpace(k) {
 		case "TerminalService":
 			id := strings.TrimSuffix(strings.TrimSpace(v), ".desktop")
-			service = id[strings.LastIndex(id, ".")+1:]
+			service = strings.ToLower(id[strings.LastIndex(id, ".")+1:])
 		case "TerminalApplication":
 			app = strings.TrimSpace(v)
 		}
 	}
-	if service != "" {
+	if _, err := exec.LookPath(service); service != "" && err == nil {
 		return service
 	}
 	return app
 }
 
-// swayTerminal is $term from the running Sway's config, when in Sway.
+// swayTerminal is $term from the running Sway's config, when in Sway: the
+// last set wins, and a value naming an earlier variable is expanded.
+// ponytail: only the main config file; sets in included files are missed.
 func swayTerminal() string {
 	if os.Getenv("SWAYSOCK") == "" {
 		return ""
 	}
-	out, err := exec.Command("swaymsg", "-t", "get_config").Output()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "swaymsg", "-t", "get_config").Output()
 	if err != nil {
 		return ""
 	}
@@ -165,12 +175,19 @@ func swayTerminal() string {
 	if json.Unmarshal(out, &c) != nil {
 		return ""
 	}
+	vars := map[string]string{}
 	for _, line := range strings.Split(c.Config, "\n") {
-		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "set $term "); ok {
-			return strings.TrimSpace(v)
+		f := strings.Fields(line)
+		if len(f) < 3 || f[0] != "set" || !strings.HasPrefix(f[1], "$") {
+			continue
 		}
+		v := strings.Trim(strings.Join(f[2:], " "), `"'`)
+		if e, ok := vars[v]; ok {
+			v = e
+		}
+		vars[f[1]] = v
 	}
-	return ""
+	return vars["$term"]
 }
 
 // Terminal is the terminal setting: a command, empty to detect.
