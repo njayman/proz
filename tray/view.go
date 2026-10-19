@@ -19,6 +19,7 @@ type View struct {
 	Dot     bool
 	Tooltip string
 	Items   []Item
+	Loading bool // projects are still being read: the menu says so
 }
 
 // Item is one quiet project in the menu.
