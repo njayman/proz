@@ -49,7 +49,7 @@ func (s *Store) NeedsTerminal(program string) (NeedsTerminal, error) {
 	if !errors.Is(err, sql.ErrNoRows) {
 		return NeedsTerminal{}, err
 	}
-	return NeedsTerminal{On: desktopSaysTerminal(name) || consoleProgram(program) || terminalPrograms[strings.TrimSuffix(name, ".exe")]}, nil
+	return NeedsTerminal{On: terminalPrograms[strings.TrimSuffix(name, ".exe")] || desktopSaysTerminal(name) || consoleProgram(program)}, nil
 }
 
 // SetNeedsTerminal sets whether program runs in a terminal; nil goes back
@@ -69,7 +69,9 @@ func (s *Store) SetNeedsTerminal(program string, on *bool) error {
 }
 
 // consoleProgram reports whether program is a Windows console executable,
-// from the subsystem in its header. Windows only.
+// from the subsystem in its header. Windows only. ponytail: .cmd and .bat
+// shims count as GUI, since many start GUI apps (VS Code's code.cmd); the
+// per-program setting fixes a shimmed terminal program.
 func consoleProgram(program string) bool {
 	if goos != "windows" {
 		return false
@@ -146,8 +148,8 @@ func runForm(t, dir string, exact bool) []string {
 			}
 		}
 	}
-	if strings.TrimSuffix(strings.ToLower(name), ".exe") == "wt" {
-		return append(f, "new-tab", "-d", dir)
+	if windowsTerminal(name) {
+		return append(f, "new-tab", "-d", strings.ReplaceAll(dir, ";", `\;`))
 	}
 	if name == "xdg-terminal-exec" {
 		// no --dir: hand-written wrappers pass it on as the program; the working folder covers it
@@ -213,6 +215,9 @@ func (s *Store) runInTerminal(dir string, program []string) (args []string, newC
 		if goos == "darwin" {
 			return macTerminal(dir, program), false, nil
 		}
+		if strings.TrimSpace(set) != "" { // forced, as with Windows Terminal: no silent fallback
+			return nil, false, fmt.Errorf("%q is not on PATH: %w", set, ErrNoTerminal)
+		}
 		if len(program) == 0 {
 			program = []string{cmp.Or(os.Getenv("ComSpec"), "cmd.exe")}
 		}
@@ -243,7 +248,7 @@ func (s *Store) runInTerminal(dir string, program []string) (args []string, newC
 // drops the separator that would have come before it.
 func withProgram(term, program []string) []string {
 	if len(program) > 0 {
-		if strings.TrimSuffix(strings.ToLower(filepath.Base(term[0])), ".exe") == "wt" {
+		if windowsTerminal(term[0]) {
 			// Windows Terminal splits its command line on ;
 			program = slices.Clone(program)
 			for i, a := range program {
@@ -256,6 +261,11 @@ func withProgram(term, program []string) []string {
 		term = term[:len(term)-1]
 	}
 	return term
+}
+
+// windowsTerminal reports whether t is Windows Terminal, wt.exe.
+func windowsTerminal(t string) bool {
+	return strings.TrimSuffix(strings.ToLower(filepath.Base(t)), ".exe") == "wt"
 }
 
 // goos is the system core behaves as. ponytail: a package variable so the

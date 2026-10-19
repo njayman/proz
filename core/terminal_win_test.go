@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -17,7 +18,9 @@ func onWindows(t *testing.T) {
 		t.Skip("needs the go tool to build test executables")
 	}
 	src := filepath.Join(t.TempDir(), "main.go")
-	os.WriteFile(src, []byte("package main\nfunc main() {}\n"), 0644)
+	if err := os.WriteFile(src, []byte("package main\nfunc main() {}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	bin := t.TempDir()
 	t.Setenv("PATH", bin)
 	for name, flags := range map[string]string{"console.exe": "", "gui.exe": "-H=windowsgui"} {
@@ -42,7 +45,9 @@ func TestWindowsConsoleProgramsAreDetected(t *testing.T) {
 	}
 
 	off := false
-	s.SetNeedsTerminal("console.exe", &off)
+	if err := s.SetNeedsTerminal("console.exe", &off); err != nil {
+		t.Fatal(err)
+	}
 	if got, _ := s.NeedsTerminal("console.exe"); got.On {
 		t.Fatal("the per-program setting should win")
 	}
@@ -62,19 +67,37 @@ func TestWindowsConsoleProgramRunsAsItselfWithNoSetting(t *testing.T) {
 
 func TestWindowsTerminalSetting(t *testing.T) {
 	onWindows(t)
-	os.WriteFile(filepath.Join(os.Getenv("PATH"), "wt.exe"), nil, 0755)
+	if err := os.WriteFile(filepath.Join(os.Getenv("PATH"), "wt.exe"), nil, 0755); err != nil {
+		t.Fatal(err)
+	}
 	s := open(t, t.TempDir())
-	p := project(t, s)
-	p.Arguments = []string{"a;b"}
+	dir := filepath.Join(t.TempDir(), "x;y")
+	os.Mkdir(dir, 0755)
+	s.AddProject(Project{Name: "semi", Path: dir, Arguments: []string{"a;b"}})
+	p, _ := s.ProjectNamed("semi")
+	esc := strings.ReplaceAll(dir, ";", `\;`)
 	if err := s.SetTerminal("wt.exe"); err != nil {
 		t.Fatal(err)
 	}
 
-	if got, want := launchArgs(t, s, p, "console.exe", false), []string{"wt.exe", "new-tab", "-d", p.Path, "console.exe", `a\;b`, p.Path}; !reflect.DeepEqual(got, want) {
+	if got, want := launchArgs(t, s, p, "console.exe", false), []string{"wt.exe", "new-tab", "-d", esc, "console.exe", `a\;b`, esc}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 	cmd, err := s.LaunchTerminal(p, false)
-	if err != nil || !reflect.DeepEqual(cmd.Args, []string{"wt.exe", "new-tab", "-d", p.Path}) {
+	if err != nil || !reflect.DeepEqual(cmd.Args, []string{"wt.exe", "new-tab", "-d", esc}) {
 		t.Fatalf("terminal only: got %v, %v", cmd.Args, err)
+	}
+}
+
+func TestWindowsMissingTerminalSettingIsAnError(t *testing.T) {
+	onWindows(t)
+	s := open(t, t.TempDir())
+	p := project(t, s)
+	if err := s.SetTerminal("wt.exe"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.Launch(p, "console.exe", false); err == nil || !strings.Contains(err.Error(), "proz config terminal") {
+		t.Fatalf("want an error naming the setting, got %v", err)
 	}
 }

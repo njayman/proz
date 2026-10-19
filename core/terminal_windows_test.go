@@ -1,11 +1,15 @@
 package core
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestWindowsNewConsoleFlag(t *testing.T) {
 	s := open(t, t.TempDir())
 	p := project(t, s)
-	t.Setenv("PATH", t.TempDir())
+	t.Setenv("PATH", filepath.Join(os.Getenv("SystemRoot"), "System32")) // notepad.exe, a GUI program
 
 	cmd, err := s.Launch(p, "nvim", false)
 	if err != nil || cmd.SysProcAttr == nil || cmd.SysProcAttr.CreationFlags&createNewConsole == 0 {
