@@ -9,10 +9,12 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/njayman/proz/core"
 )
 
 func parseDesktopFiles() []desktopApp {
-	dirs := desktopDataDirs()
+	dirs := core.DesktopDirs()
 	seen := make(map[string]bool)
 	var apps []desktopApp
 
@@ -39,26 +41,6 @@ func parseDesktopFiles() []desktopApp {
 	})
 
 	return apps
-}
-
-func desktopDataDirs() []string {
-	var dirs []string
-
-	dataHome := os.Getenv("XDG_DATA_HOME")
-	if dataHome == "" {
-		dataHome = filepath.Join(os.Getenv("HOME"), ".local", "share")
-	}
-	dirs = append(dirs, filepath.Join(dataHome, "applications"))
-
-	dataDirs := os.Getenv("XDG_DATA_DIRS")
-	if dataDirs == "" {
-		dataDirs = "/usr/local/share:/usr/share"
-	}
-	for _, d := range filepath.SplitList(dataDirs) {
-		dirs = append(dirs, filepath.Join(d, "applications"))
-	}
-
-	return dirs
 }
 
 func parseDesktopFile(path string) *desktopApp {

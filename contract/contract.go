@@ -71,6 +71,15 @@ type TerminalSetting struct {
 	Terminal string `json:"terminal"`
 }
 
+// NeedsTerminal is whether proz opens a program in a terminal, as
+// 'proz config needs-terminal --json' prints it. Set is true when it is the
+// user's setting rather than proz's guess.
+type NeedsTerminal struct {
+	Program       string `json:"program"`
+	NeedsTerminal bool   `json:"needs_terminal"`
+	Set           bool   `json:"set"`
+}
+
 // BrainNote is a project's note in the brain, as 'proz brain --json' and the
 // read_brain_note tool return it: the whole file, the user's text included.
 type BrainNote struct {

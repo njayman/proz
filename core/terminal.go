@@ -16,16 +16,103 @@ import (
 // program in.
 var ErrNoTerminal = errors.New("set the terminal setting with: proz config terminal <command>")
 
-// terminalPrograms run in a terminal; anything else is treated as a GUI program.
-// ponytail: a fixed list; #68 adds .desktop Terminal=true and per-program settings.
+// terminalPrograms run in a terminal unless the user or the system says
+// otherwise; anything else is treated as a GUI program.
 var terminalPrograms = map[string]bool{
 	"vi": true, "vim": true, "nvim": true, "hx": true, "helix": true, "nano": true,
 	"micro": true, "kak": true, "lazygit": true, "tig": true,
 	"claude": true, "codex": true, "gemini": true, "opencode": true, "aider": true,
 }
 
-func needsTerminal(program string) bool {
-	return terminalPrograms[filepath.Base(program)]
+// NeedsTerminal is whether a program runs in a terminal, and whether that is
+// the user's setting (Set) rather than proz's guess.
+type NeedsTerminal struct {
+	On  bool
+	Set bool
+}
+
+// NeedsTerminal decides whether program runs in a terminal: the user's
+// per-program setting, else a .desktop entry with Terminal=true, else the
+// built-in list.
+func (s *Store) NeedsTerminal(program string) (NeedsTerminal, error) {
+	name := filepath.Base(program)
+	var v string
+	err := s.db.QueryRow(`SELECT value FROM settings WHERE workspace_id = ? AND key = ?`, DefaultWorkspace, "needs_terminal."+name).Scan(&v)
+	if err == nil {
+		return NeedsTerminal{On: v == "on", Set: true}, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return NeedsTerminal{}, err
+	}
+	return NeedsTerminal{On: desktopSaysTerminal(name) || terminalPrograms[name]}, nil
+}
+
+// SetNeedsTerminal sets whether program runs in a terminal; nil goes back
+// to proz's guess.
+func (s *Store) SetNeedsTerminal(program string, on *bool) error {
+	key := "needs_terminal." + filepath.Base(program)
+	if on == nil {
+		_, err := s.db.Exec(`DELETE FROM settings WHERE workspace_id = ? AND key = ?`, DefaultWorkspace, key)
+		return err
+	}
+	v := "off"
+	if *on {
+		v = "on"
+	}
+	_, err := s.db.Exec(`INSERT OR REPLACE INTO settings (workspace_id, key, value) VALUES (?, ?, ?)`, DefaultWorkspace, key, v)
+	return err
+}
+
+// desktopSaysTerminal reports whether an installed .desktop entry runs
+// program with Terminal=true.
+func desktopSaysTerminal(program string) bool {
+	for _, dir := range DesktopDirs() {
+		entries, _ := os.ReadDir(dir)
+		for _, e := range entries {
+			if !strings.HasSuffix(e.Name(), ".desktop") {
+				continue
+			}
+			b, err := os.ReadFile(filepath.Join(dir, e.Name()))
+			if err != nil {
+				continue
+			}
+			var execName string
+			terminal, inEntry := false, false
+			for _, line := range strings.Split(string(b), "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "[") {
+					inEntry = line == "[Desktop Entry]"
+				} else if v, ok := strings.CutPrefix(line, "Exec="); ok && inEntry {
+					if f := strings.Fields(v); len(f) > 0 {
+						execName = filepath.Base(strings.Trim(f[0], `"`))
+					}
+				} else if inEntry && line == "Terminal=true" {
+					terminal = true
+				}
+			}
+			if terminal && execName == program {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// DesktopDirs are the folders holding .desktop entries, most specific first.
+func DesktopDirs() []string {
+	dataHome := os.Getenv("XDG_DATA_HOME")
+	if dataHome == "" {
+		dataHome = filepath.Join(os.Getenv("HOME"), ".local", "share")
+	}
+	dirs := []string{filepath.Join(dataHome, "applications")}
+	dataDirs := os.Getenv("XDG_DATA_DIRS")
+	if dataDirs == "" {
+		dataDirs = "/usr/local/share:/usr/share"
+	}
+	for _, d := range filepath.SplitList(dataDirs) {
+		dirs = append(dirs, filepath.Join(d, "applications"))
+	}
+	return dirs
 }
 
 // knownTerminals is the probe order, and how each runs a program in folder

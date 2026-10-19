@@ -23,6 +23,18 @@ func fakePath(t *testing.T, names ...string) {
 	t.Setenv("XDG_CURRENT_DESKTOP", "")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("SWAYSOCK", "")
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_DIRS", t.TempDir())
+}
+
+// desktopEntry installs a .desktop entry in the user's applications folder.
+func desktopEntry(t *testing.T, name, body string) {
+	t.Helper()
+	dir := filepath.Join(os.Getenv("XDG_DATA_HOME"), "applications")
+	os.MkdirAll(dir, 0755)
+	if err := os.WriteFile(filepath.Join(dir, name+".desktop"), []byte("[Desktop Entry]\nType=Application\nName="+name+"\n"+body+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // fakeExec writes an executable script into the first PATH folder.
@@ -332,5 +344,46 @@ func TestSwayTermLastSetWinsAndVariablesExpand(t *testing.T) {
 				t.Fatalf("got %v, want %s", got, want)
 			}
 		})
+	}
+}
+
+func TestDesktopEntrySaysTerminalTrue(t *testing.T) {
+	fakePath(t, "xterm")
+	desktopEntry(t, "btop", "Exec=/usr/bin/btop %F\nTerminal=true")
+	desktopEntry(t, "gimp", "Exec=gimp-2.10 %U\nTerminal=false")
+	s := open(t, t.TempDir())
+	p := project(t, s)
+
+	if got, want := launchArgs(t, s, p, "btop", false), []string{"xterm", "-e", "btop", p.Path}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	if got := launchArgs(t, s, p, "gimp-2.10", false); got[0] != "gimp-2.10" {
+		t.Fatalf("Terminal=false: got %v, want it unwrapped", got)
+	}
+}
+
+func TestPerProgramSettingBeatsEverything(t *testing.T) {
+	fakePath(t, "xterm")
+	desktopEntry(t, "btop", "Exec=btop\nTerminal=true")
+	s := open(t, t.TempDir())
+	p := project(t, s)
+	for program, on := range map[string]bool{"nvim": false, "btop": false, "code": true} {
+		if err := s.SetNeedsTerminal(program, &on); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for program, wrapped := range map[string]bool{"nvim": false, "btop": false, "code": true} {
+		if got := launchArgs(t, s, p, program, false); (got[0] == "xterm") != wrapped {
+			t.Errorf("%s: got %v, want wrapped %v", program, got, wrapped)
+		}
+	}
+
+	// removing the override goes back to the guess
+	if err := s.SetNeedsTerminal("nvim", nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.NeedsTerminal("nvim"); err != nil || !got.On || got.Set {
+		t.Fatalf("cleared: got %+v, %v", got, err)
 	}
 }

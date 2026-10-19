@@ -101,6 +101,57 @@ var terminalCmd = &cobra.Command{
 	},
 }
 
+var needsTerminalJSON bool
+
+var needsTerminalCmd = &cobra.Command{
+	Use:   "needs-terminal <program> [on|off|auto]",
+	Short: "Show or set whether a program opens in a terminal",
+	Long: "Show or set whether proz opens a program in a terminal when it is not\n" +
+		"itself running in one. proz guesses from the program's .desktop entry\n" +
+		"and a list of well-known terminal programs; on or off overrides the\n" +
+		"guess, auto goes back to it.",
+	Args:      cobra.RangeArgs(1, 2),
+	ValidArgs: []string{"on", "off", "auto"},
+	RunE: func(cmd *cobra.Command, args []string) error {
+		program := args[0]
+		return withStore(func(s *core.Store) error {
+			if len(args) == 2 {
+				var on *bool
+				switch args[1] {
+				case "on", "off":
+					v := args[1] == "on"
+					on = &v
+				case "auto":
+				default:
+					return fmt.Errorf("want on, off or auto, got %q", args[1])
+				}
+				if err := s.SetNeedsTerminal(program, on); err != nil {
+					return err
+				}
+			}
+			need, err := s.NeedsTerminal(program)
+			if err != nil {
+				return err
+			}
+			if needsTerminalJSON {
+				return printJSON(contract.NeedsTerminal{Program: program, NeedsTerminal: need.On, Set: need.Set})
+			}
+			if len(args) == 2 {
+				return nil
+			}
+			v, how := "off", "guessed"
+			if need.On {
+				v = "on"
+			}
+			if need.Set {
+				how = "set"
+			}
+			fmt.Printf("%s (%s)\n", v, how)
+			return nil
+		})
+	},
+}
+
 // moduleCmd shows or switches one module on or off.
 func moduleCmd(m core.Module) *cobra.Command {
 	return &cobra.Command{
@@ -145,5 +196,7 @@ func init() {
 	configCmd.AddCommand(staleDaysCmd)
 	terminalCmd.Flags().BoolVar(&terminalJSON, "json", false, "print the setting as JSON; an empty terminal means detect")
 	configCmd.AddCommand(terminalCmd)
+	needsTerminalCmd.Flags().BoolVar(&needsTerminalJSON, "json", false, "print program, needs_terminal and set (true when it is your setting) as JSON")
+	configCmd.AddCommand(needsTerminalCmd)
 	rootCmd.AddCommand(configCmd)
 }

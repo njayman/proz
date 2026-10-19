@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -716,5 +717,29 @@ func TestConfigTerminalJSONContract(t *testing.T) {
 	run(t, "config", "terminal", "")
 	if out := strings.TrimSpace(run(t, "config", "terminal")); out != "detect" {
 		t.Fatalf("cleared: got %q", out)
+	}
+}
+
+// Agents fix a wrong guess with `proz config needs-terminal --json`.
+func TestConfigNeedsTerminalJSONContract(t *testing.T) {
+	configDir(t)
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_DIRS", t.TempDir())
+	var got map[string]any
+	check := func(out string, want map[string]any) {
+		t.Helper()
+		got = nil
+		if err := json.Unmarshal([]byte(out), &got); err != nil || !reflect.DeepEqual(got, want) {
+			t.Fatalf("got %v, %v; want %v", got, err, want)
+		}
+	}
+	check(run(t, "config", "needs-terminal", "nvim", "--json"), map[string]any{"program": "nvim", "needs_terminal": true, "set": false})
+	check(run(t, "config", "needs-terminal", "nvim", "off", "--json"), map[string]any{"program": "nvim", "needs_terminal": false, "set": true})
+	if out := strings.TrimSpace(run(t, "config", "needs-terminal", "nvim")); out != "off (set)" {
+		t.Fatalf("plain: got %q", out)
+	}
+	check(run(t, "config", "needs-terminal", "nvim", "auto", "--json"), map[string]any{"program": "nvim", "needs_terminal": true, "set": false})
+	if err := execute("config", "needs-terminal", "nvim", "maybe"); err == nil {
+		t.Fatal("want an error for maybe")
 	}
 }
