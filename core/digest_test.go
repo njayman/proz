@@ -135,7 +135,7 @@ func TestSMTPConfigIsOwnerOnlyAndEnablesEmail(t *testing.T) {
 		t.Fatal(err)
 	}
 	fi, err := os.Stat(filepath.Join(dir, "smtp.json"))
-	if err != nil || fi.Mode().Perm() != 0o600 {
+	if err != nil || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600) { // Windows has no Unix modes; the profile's ACL guards it
 		t.Fatalf("smtp.json must be owner-only: %v, %v", fi, err)
 	}
 	if got, ok, err := s.SMTP(); !ok || err != nil || got != want {

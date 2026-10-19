@@ -91,6 +91,7 @@ func skipped(rel string) bool {
 }
 
 func walkNewest(dir string, now time.Time, ignore []string) (w workState) {
+	dir = resolve(dir) // ignore holds resolved folders: walk resolved paths too
 	seen := 0
 	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if seen++; seen > maxWalk {

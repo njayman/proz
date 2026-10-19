@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/term"
 )
 
 type projectPickerModel struct {
@@ -171,10 +173,19 @@ func (m projectPickerModel) View() string {
 	return b.String()
 }
 
+// runTUI runs a picker drawn on stderr. With no terminal on stdin (an agent,
+// a pipe) it fails at once: on Windows bubbletea would otherwise open the
+// console and wait for keys nobody presses.
+func runTUI(m tea.Model) (tea.Model, error) {
+	if !term.IsTerminal(os.Stdin.Fd()) {
+		return nil, errors.New("no terminal to show the picker in")
+	}
+	return tea.NewProgram(m, tea.WithOutput(os.Stderr)).Run()
+}
+
 func runProjectPicker(projects []Project) (*Project, bool, error) {
 	m := newProjectPickerModel(projects)
-	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
-	final, err := p.Run()
+	final, err := runTUI(m)
 	if err != nil {
 		return nil, false, err
 	}
@@ -509,8 +520,7 @@ func (m binaryPickerModel) View() string {
 
 func runBinaryPicker(binaries []string) ([]string, error) {
 	m := newBinaryPickerModel(binaries)
-	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
-	final, err := p.Run()
+	final, err := runTUI(m)
 	if err != nil {
 		return nil, err
 	}
@@ -569,8 +579,7 @@ func (m programSelectModel) View() string {
 
 func runProgramSelectPicker(programs []string) (string, error) {
 	m := programSelectModel{programs: programs}
-	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
-	final, err := p.Run()
+	final, err := runTUI(m)
 	if err != nil {
 		return "", err
 	}
@@ -672,8 +681,7 @@ func (m editFormModel) View() string {
 
 func runEditForm(project Project) (*Project, error) {
 	m := newEditFormModel(project)
-	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
-	final, err := p.Run()
+	final, err := runTUI(m)
 	if err != nil {
 		return nil, err
 	}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -97,7 +98,7 @@ func TestRewritesPreserveTextOutsideTheProzSection(t *testing.T) {
 	if strings.Count(got, "<!-- proz:start -->") != 1 {
 		t.Errorf("one section only:\n%s", got)
 	}
-	if fi, _ := os.Stat(note); fi.Mode().Perm() != 0o644 {
+	if fi, _ := os.Stat(note); runtime.GOOS != "windows" && fi.Mode().Perm() != 0o644 { // Windows has no Unix modes
 		t.Errorf("mode changed to %v", fi.Mode().Perm())
 	}
 }
@@ -281,5 +282,27 @@ func TestSwitchingPromptsOffClearsThemFromBrainNotesAtOnce(t *testing.T) {
 	}
 	if data, _ := os.ReadFile(note); strings.Contains(string(data), "my private plan") {
 		t.Fatalf("prompt still in the note:\n%s", data)
+	}
+}
+
+// A project registered through a symlink (macOS temp folders, a linked
+// home) still sees its brain folder as proz's, not the user's activity.
+func TestABrainInsideAProjectReachedByASymlinkIsNotItsActivity(t *testing.T) {
+	start := time.Now().Add(-10 * day)
+	c := &clock{start}
+	s := openAt(t, c)
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip("symlinks unsupported:", err)
+	}
+	os.Mkdir(filepath.Join(real, "notes"), 0o755)
+	touch(t, real, "main.go", start)
+	s.AddProject(Project{Name: "app", Path: link})
+	s.SetBrainPath(filepath.Join(real, "notes"))
+	c.t = time.Now().Add(time.Minute)
+	s.SyncBrain()
+	if st, _ := s.Status(onlyProject(t, s).ID); !st.Stale {
+		t.Fatalf("writing the brain note made the project active: quiet %v", st.Quiet)
 	}
 }
