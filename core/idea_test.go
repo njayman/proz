@@ -27,7 +27,7 @@ func TestIdeaIsStaleOnRegistrationLaunchAndMilestoneOnly(t *testing.T) {
 	if len(ns) != 1 || !ns[0].LastActivity.Equal(t0.Add(3*day)) {
 		t.Fatalf("want idea stale since its milestone, got %+v", ns)
 	}
-	if _, err := s.Launch(idea, ""); err != nil {
+	if _, err := s.Launch(idea, "", true); err != nil {
 		t.Fatal(err)
 	}
 	if ns := nudgesAt(t, s); len(ns) != 0 {

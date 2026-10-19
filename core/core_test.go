@@ -212,18 +212,18 @@ func TestLaunchRecordsProgramAndBuildsCommand(t *testing.T) {
 	ps, _ := s.Projects()
 	p := ps[0]
 
-	if cmd, err := s.Launch(p, ""); err != nil || cmd != nil {
+	if cmd, err := s.Launch(p, "", true); err != nil || cmd != nil {
 		t.Fatalf("no program: want nil command, got %v, %v", cmd, err)
 	}
 	if got := recent(t, s); len(got) != 0 {
 		t.Fatalf("no program must not be recorded, got %v", got)
 	}
 
-	cmd, err := s.Launch(p, "code")
+	cmd, err := s.Launch(p, "code", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Launch(Project{ID: 42}, ""); err == nil {
+	if _, err := s.Launch(Project{ID: 42}, "", true); err == nil {
 		t.Fatal("launching an unknown project should fail")
 	}
 	if want := []string{"code", "--new-window", "/web"}; !reflect.DeepEqual(cmd.Args, want) || cmd.Dir != "/web" {

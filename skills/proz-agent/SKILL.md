@@ -54,6 +54,7 @@ Every nudge asks the user one decision. Run these only when the user has made it
 
 ```bash
 proz resume [project]          # prints the left-off note, then opens the project's program
+proz resume [project] --terminal  # prints the note, then opens a terminal in the project's folder (in a terminal: starts the user's shell there and waits)
 proz snooze [project] [days]   # hide the nudge for N days (7 by default); it returns if still quiet
 proz snooze [project] --until YYYY-MM-DD   # hide it until the start of that local day, for a date the user names
 proz drop [project]            # archive: no more nudges until any new activity revives it
@@ -61,7 +62,7 @@ proz archived --json           # dropped projects, same fields as nudges
 proz restore [project]         # un-archive and clear any snooze
 ```
 
-With no project name these use the project containing the current directory. For `snooze` with two arguments, they are the project then the days; with one, an exact project name wins, otherwise a number is the days. A snooze ends early if the project sees new activity: the next quiet stretch nudges as usual. `resume` opens an interactive program in a terminal; from a shell without one, prefer `proz status --json` to read the note and let the user open it.
+With no project name these use the project containing the current directory. For `snooze` with two arguments, they are the project then the days; with one, an exact project name wins, otherwise a number is the days. A snooze ends early if the project sees new activity: the next quiet stretch nudges as usual. `resume` runs the project's program in the current terminal. Without a terminal (your shell, rofi, the tray), terminal programs such as `nvim`, `lazygit` or `claude` open in a new window of the user's terminal emulator in the project's folder, and GUI programs start on their own. On Windows they start in a new console, which Windows opens in the user's default terminal. If proz cannot find a terminal (on Windows: the terminal setting names one that is not installed) it fails with an error naming `proz config terminal`. `proz config terminal [--json]` shows the terminal setting (`{"terminal": ""}`, empty means detect); `proz config terminal <command>` sets it, one word (`wezterm`) for that terminal's own form or several (`wezterm start --`) used as written, and `proz config terminal ""` goes back to detecting. Set it only when the user asks or a launch fails with that error and the user tells you their terminal. proz guesses which programs need a terminal from a list of well-known terminal programs and agent CLIs, their `.desktop` entry (`Terminal=true`) on Linux, and whether the executable is a console program on Windows (`.cmd` and `.bat` shims count as GUI). `proz config needs-terminal <program> [--json]` shows the decision (`{"program": "btop", "needs_terminal": true, "set": false}`, `set` true when it is the user's setting); `proz config needs-terminal <program> on|off` overrides it and `auto` goes back to the guess. Change it when the user says a program opened wrongly (a terminal program with no window, or a GUI program inside a terminal).
 
 ## Record a milestone
 

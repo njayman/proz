@@ -200,7 +200,7 @@ func TestLastActivityIsNewestOfRegistrationLaunchAndCommit(t *testing.T) {
 	p := onlyProject(t, s)
 
 	c.t = t0.Add(5 * day)
-	if _, err := s.Launch(p, ""); err != nil { // opening without a program still counts
+	if _, err := s.Launch(p, "", true); err != nil { // opening without a program still counts
 		t.Fatal(err)
 	}
 	c.t = t0.Add(10 * day)
