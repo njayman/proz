@@ -9,7 +9,7 @@ The problem it solves: people start ideas, get busy, pause them, and forget. The
 Every feature must pass all of these. If it doesn't, cut it or redesign it.
 
 1. **Zero maintenance.** The user never has to open or update anything. State comes from agents and from automatic signals (git, file activity, agent sessions).
-2. **Push, don't pull.** Humans are reached through a tray dot, an OS notification or email. A dashboard is optional and never required.
+2. **Push to remind, pull to act.** Humans are reached through a tray dot, an OS notification, email, or a phone notification once the v2 server exists. proz never depends on anyone opening it to stay current. Every surface someone opens (TUI, desktop GUI, phone app) is a place to act (open, launch, check on, set up), never to maintain, and agents and the CLI can reach every action it offers.
 3. **Agents first.** Every capability is reachable by agents (CLI `--json`, MCP over stdio) before it gets a human UI.
 4. **Local-first.** One binary, works offline. Hosted sync, relay and email are an optional paid layer on top, never a requirement.
 5. **Pluggable brains.** A "brain" is the knowledge store proz reads from and writes to. The default is a local markdown folder accessed through the filesystem, with no network calls. Remote brains (for example brain.md over HTTP MCP, or a git remote) are adapters that sync to a local copy in the background, so agents never wait on the network.
