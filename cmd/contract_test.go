@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -50,8 +51,7 @@ func run(t *testing.T, args ...string) string {
 
 // Agents parse `proz list --json`; field names and shape are a contract.
 func TestListJSONContract(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	dir := configDir(t)
 	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
 	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[
   {"name": "web", "path": "/web", "programs": ["code", "claude"], "arguments": ["--new-window"]},
@@ -95,8 +95,7 @@ func TestListJSONContract(t *testing.T) {
 
 // Agents parse `proz nudges --json`; field names and shape are a contract.
 func TestNudgesJSONContract(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	dir := configDir(t)
 	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
 	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": "/web"}]`), 0644)
 	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
@@ -126,7 +125,7 @@ func TestNudgesJSONContract(t *testing.T) {
 }
 
 func TestConfigStaleDays(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configDir(t)
 	if out := run(t, "config", "stale-days"); out != "7\n" {
 		t.Fatalf("default: got %q", out)
 	}
@@ -140,8 +139,7 @@ func TestConfigStaleDays(t *testing.T) {
 }
 
 func TestConfigProjectStaleDays(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	dir := configDir(t)
 	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
 	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": "/web"}, {"name": "api", "path": "/api"}]`), 0644)
 
@@ -167,12 +165,11 @@ func TestConfigProjectStaleDays(t *testing.T) {
 }
 
 func TestStatusResolvesProjectFromWorkingDirectory(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	dir := configDir(t)
 	project := filepath.Join(dir, "web")
 	os.MkdirAll(filepath.Join(project, "src", "deep"), 0775)
 	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
-	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": "`+project+`"}]`), 0644)
+	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": `+jsonString(project)+`}]`), 0644)
 	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
 	now = func() time.Time { return t0 }
 	run(t, "list", "--json") // import at t0
@@ -188,7 +185,7 @@ func TestStatusResolvesProjectFromWorkingDirectory(t *testing.T) {
 	}
 	want := `{
   "name": "web",
-  "path": "` + project + `",
+  "path": ` + jsonString(project) + `,
   "last_activity": "2026-10-01T09:00:00Z",
   "quiet_days": 3,
   "quiet_seconds": 259200,
@@ -209,12 +206,11 @@ func TestStatusResolvesProjectFromWorkingDirectory(t *testing.T) {
 }
 
 func TestMilestoneByNameAndFromWorkingDirectory(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	dir := configDir(t)
 	project := filepath.Join(dir, "web")
 	os.MkdirAll(filepath.Join(project, "src"), 0775)
 	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
-	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": "`+project+`"}]`), 0644)
+	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": `+jsonString(project)+`}]`), 0644)
 	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
 	t.Cleanup(func() { now = time.Now })
 
@@ -230,7 +226,7 @@ func TestMilestoneByNameAndFromWorkingDirectory(t *testing.T) {
 	}
 	want := `{
   "name": "web",
-  "path": "` + project + `",
+  "path": ` + jsonString(project) + `,
   "last_activity": "2026-10-02T09:00:00Z",
   "quiet_days": 2,
   "quiet_seconds": 172800,
@@ -262,7 +258,7 @@ func TestMilestoneByNameAndFromWorkingDirectory(t *testing.T) {
 }
 
 func TestIdeaCaptureResurfaces(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configDir(t)
 	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
 	t.Cleanup(func() { now = time.Now })
 	now = func() time.Time { return t0 }
@@ -290,8 +286,7 @@ func TestIdeaCaptureResurfaces(t *testing.T) {
 }
 
 func TestAddOffersToAttachAFolderToAMatchingIdea(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	dir := configDir(t)
 	t.Cleanup(func() { stdin = bufio.NewReader(os.Stdin) })
 	folder := func(name string) string {
 		p := filepath.Join(dir, name, "habit-tracker")
@@ -327,12 +322,11 @@ func TestAddOffersToAttachAFolderToAMatchingIdea(t *testing.T) {
 }
 
 func TestRespondingToNudges(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	dir := configDir(t)
 	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
 	web := t.TempDir() // its own folder: the config dir's database file would count as activity
 	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[
-  {"name": "web", "path": "`+web+`", "programs": ["true"]},
+  {"name": "web", "path": `+jsonString(web)+`, "programs": [`+jsonString(noop(t))+`]},
   {"name": "api", "path": "/api"}
 ]`), 0644)
 	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
@@ -391,12 +385,11 @@ func TestRespondingToNudges(t *testing.T) {
 }
 
 func TestSnoozeArguments(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	dir := configDir(t)
 	project := filepath.Join(dir, "web")
 	os.MkdirAll(project, 0775)
 	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
-	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": "`+project+`"}, {"name": "2024", "path": "/old"}]`), 0644)
+	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": `+jsonString(project)+`}, {"name": "2024", "path": "/old"}]`), 0644)
 	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
 	t.Cleanup(func() { now = time.Now })
 	now = func() time.Time { return t0 }
@@ -426,8 +419,7 @@ func TestSnoozeArguments(t *testing.T) {
 }
 
 func TestCheckDeliversOnceAndRespectsTheSwitch(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	dir := configDir(t)
 	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
 	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": "/web"}]`), 0644)
 	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
@@ -466,8 +458,7 @@ func TestCheckDeliversOnceAndRespectsTheSwitch(t *testing.T) {
 }
 
 func TestEmailDigestIsConfiguredThenSentWeeklyByCheck(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	dir := configDir(t)
 	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
 	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": "/web"}]`), 0644)
 	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC) // a Thursday
@@ -554,8 +545,7 @@ func TestEmailDigestIsConfiguredThenSentWeeklyByCheck(t *testing.T) {
 }
 
 func TestBrainIsConfiguredReadAndSyncedByCheck(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	dir := configDir(t)
 	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
 	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": "/web"}]`), 0644)
 	t.Cleanup(func() { send = notify.Send })
@@ -596,11 +586,11 @@ func TestBrainIsConfiguredReadAndSyncedByCheck(t *testing.T) {
 func TestTrayStaysOnUnlessTheSettingSaysOff(t *testing.T) {
 	broken := filepath.Join(t.TempDir(), "file")
 	os.WriteFile(broken, nil, 0o644)
-	t.Setenv("XDG_CONFIG_HOME", broken) // the store cannot open
+	useConfigDir(t, broken) // the store cannot open
 	if !trayEnabled() {
 		t.Fatal("an unreadable setting must keep the tray running")
 	}
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configDir(t)
 	if err := withStore(func(s *core.Store) error { return s.SetModule(core.ModuleTray, false) }); err != nil {
 		t.Fatal(err)
 	}
@@ -610,7 +600,7 @@ func TestTrayStaysOnUnlessTheSettingSaysOff(t *testing.T) {
 }
 
 func TestTraySnoozeHidesTheProjectForTheChosenDays(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configDir(t)
 	var p core.Project
 	if err := withStore(func(s *core.Store) (err error) {
 		if err = s.AddProject(core.Project{Name: "web", Path: t.TempDir()}); err != nil {
@@ -632,10 +622,9 @@ func TestTraySnoozeHidesTheProjectForTheChosenDays(t *testing.T) {
 }
 
 func TestSnoozeUntilADate(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	dir := configDir(t)
 	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
-	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": "`+t.TempDir()+`"}]`), 0644)
+	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": `+jsonString(t.TempDir())+`}]`), 0644)
 	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
 	t.Cleanup(func() { now = time.Now })
 	now = func() time.Time { return t0 }
@@ -672,7 +661,7 @@ func TestSnoozeUntilADate(t *testing.T) {
 }
 
 func TestSnoozeUntilNamesAMissingProject(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configDir(t)
 	if err := execute("snooze", "3", "--until", "2026-11-09"); err == nil || !strings.Contains(err.Error(), `"3" not found`) {
 		t.Fatalf("got %v", err)
 	}
@@ -687,4 +676,26 @@ func TestStartOfDaySurvivesAMissingMidnight(t *testing.T) {
 	if err != nil || got.Format(time.DateOnly) != "2018-11-04" {
 		t.Fatalf("got %v, %v", got, err)
 	}
+}
+
+// jsonString is s as a JSON string, so Windows paths survive in store.json.
+func jsonString(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
+// noop puts a program that does nothing and succeeds on PATH and returns
+// its name; Windows has no true.
+func noop(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	name, body := "proz-noop", "#!/bin/sh\n"
+	if runtime.GOOS == "windows" {
+		name, body = "proz-noop.cmd", "@exit /b 0\r\n"
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return name
 }

@@ -111,7 +111,8 @@ func TestProjectAtSeesThroughSymlinksAndRoot(t *testing.T) {
 		t.Fatalf("real path inside a project registered by symlink: got %q, %v", p.Name, err)
 	}
 
-	s.AddProject(Project{Name: "everything", Path: "/"})
+	root := filepath.VolumeName(os.TempDir()) + string(filepath.Separator) // / here, C:\ on Windows
+	s.AddProject(Project{Name: "everything", Path: root})
 	if p, err := s.ProjectAt(os.TempDir()); err != nil || p.Name != "everything" {
 		t.Fatalf("project at / should contain everything: got %q, %v", p.Name, err)
 	}

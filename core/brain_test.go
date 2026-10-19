@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -97,7 +98,7 @@ func TestRewritesPreserveTextOutsideTheProzSection(t *testing.T) {
 	if strings.Count(got, "<!-- proz:start -->") != 1 {
 		t.Errorf("one section only:\n%s", got)
 	}
-	if fi, _ := os.Stat(note); fi.Mode().Perm() != 0o644 {
+	if fi, _ := os.Stat(note); runtime.GOOS != "windows" && fi.Mode().Perm() != 0o644 { // Windows has no Unix modes
 		t.Errorf("mode changed to %v", fi.Mode().Perm())
 	}
 }
