@@ -61,7 +61,7 @@ proz archived --json           # dropped projects, same fields as nudges
 proz restore [project]         # un-archive and clear any snooze
 ```
 
-With no project name these use the project containing the current directory. For `snooze` with two arguments, they are the project then the days; with one, an exact project name wins, otherwise a number is the days. A snooze ends early if the project sees new activity: the next quiet stretch nudges as usual. `resume` opens an interactive program in a terminal; from a shell without one, prefer `proz status --json` to read the note and let the user open it.
+With no project name these use the project containing the current directory. For `snooze` with two arguments, they are the project then the days; with one, an exact project name wins, otherwise a number is the days. A snooze ends early if the project sees new activity: the next quiet stretch nudges as usual. `resume` runs the project's program in the current terminal. Without a terminal (your shell, rofi, the tray), terminal programs such as `nvim`, `lazygit` or `claude` open in a new window of the user's terminal emulator in the project's folder, and GUI programs start on their own. If proz cannot find a terminal it fails with an error naming `proz config terminal`. `proz config terminal [--json]` shows the terminal setting (`{"terminal": ""}`, empty means detect); `proz config terminal <command>` sets it, one word (`wezterm`) for that terminal's own form or several (`wezterm start --`) used as written, and `proz config terminal ""` goes back to detecting. Set it only when the user asks or a launch fails with that error and the user tells you their terminal.
 
 ## Record a milestone
 

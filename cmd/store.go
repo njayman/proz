@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/njayman/proz/core"
 	"github.com/njayman/proz/utils"
 )
@@ -65,22 +66,40 @@ func loadRecentPrograms() (programs []string) {
 	return programs
 }
 
-// launch opens project with program, attached to the terminal.
+// launch opens project with program. In a terminal the program runs there;
+// without one (rofi, wofi) core opens terminal programs in the user's terminal.
 func launch(project Project, program string) error {
+	tty, ttyErr := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if ttyErr == nil {
+		defer tty.Close()
+	}
+	attached := ttyErr == nil || term.IsTerminal(os.Stdin.Fd())
 	var cmd *exec.Cmd
 	if err := withStore(func(s *core.Store) (err error) {
-		cmd, err = s.Launch(project, program)
+		cmd, err = s.Launch(project, program, attached)
 		return err
 	}); err != nil || cmd == nil {
 		return err
 	}
-	if tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0); err == nil {
-		defer tty.Close()
+	if !attached {
+		return startDetached(cmd)
+	}
+	if tty != nil {
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = tty, tty, tty
 	} else {
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	}
 	return cmd.Run()
+}
+
+// startDetached starts cmd on its own and reaps it when it exits, so no
+// zombie lingers.
+func startDetached(cmd *exec.Cmd) error {
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go cmd.Wait()
+	return nil
 }
 
 // findProject returns the first project named name.

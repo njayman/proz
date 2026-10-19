@@ -335,8 +335,9 @@ func (s *Store) RecentPrograms() ([]string, error) {
 // Launch records a launch of p (activity, even with no program) and program
 // as recently used, and returns the command that opens
 // p with it; the caller wires stdio and runs it. No program means nothing to
-// launch, so it returns a nil command.
-func (s *Store) Launch(p Project, program string) (*exec.Cmd, error) {
+// launch, so it returns a nil command. When the caller has no terminal
+// attached, a terminal program is wrapped in the user's terminal emulator.
+func (s *Store) Launch(p Project, program string, attached bool) (*exec.Cmd, error) {
 	res, err := s.db.Exec(`UPDATE projects SET last_launch = ? WHERE id = ? AND workspace_id = ?`, s.now().Unix(), p.ID, DefaultWorkspace)
 	if err := foundOrErr(res, err); err != nil {
 		return nil, err
@@ -347,7 +348,15 @@ func (s *Store) Launch(p Project, program string) (*exec.Cmd, error) {
 	if err := s.PushRecentProgram(program); err != nil {
 		return nil, err
 	}
-	cmd := exec.Command(program, append(slices.Clone(p.Arguments), p.Path)...)
+	args := append([]string{program}, append(slices.Clone(p.Arguments), p.Path)...)
+	if !attached && needsTerminal(program) {
+		term, err := s.terminal()
+		if err != nil {
+			return nil, fmt.Errorf("no terminal found to open %s in: %w", program, err)
+		}
+		args = append(term, args...)
+	}
+	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = p.Path
 	return cmd, nil
 }

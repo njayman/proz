@@ -62,6 +62,44 @@ var staleDaysCmd = &cobra.Command{
 	},
 }
 
+var terminalJSON bool
+
+var terminalCmd = &cobra.Command{
+	Use:   "terminal [command]",
+	Short: "Show or set the terminal proz opens terminal programs in",
+	Long: "Show or set the terminal emulator proz opens terminal programs (nvim,\n" +
+		"lazygit, claude, ...) in when it is not itself running in a terminal,\n" +
+		"as from rofi or the tray. Empty means detect it. One word, like\n" +
+		"'wezterm', uses that terminal's own form; several words, like\n" +
+		"'wezterm start --', are used as written, with the program appended.\n" +
+		"Set it to \"\" to go back to detecting.",
+	Args: cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return withStore(func(s *core.Store) error {
+			if len(args) == 1 {
+				if err := s.SetTerminal(args[0]); err != nil {
+					return err
+				}
+			}
+			t, err := s.Terminal()
+			if err != nil {
+				return err
+			}
+			if terminalJSON {
+				return printJSON(map[string]string{"terminal": t})
+			}
+			if len(args) == 1 {
+				return nil
+			}
+			if t == "" {
+				t = "detect"
+			}
+			fmt.Println(t)
+			return nil
+		})
+	},
+}
+
 // moduleCmd shows or switches one module on or off.
 func moduleCmd(m core.Module) *cobra.Command {
 	return &cobra.Command{
@@ -104,5 +142,7 @@ func init() {
 	}
 	staleDaysCmd.Flags().StringVar(&staleProject, "project", "", "project name to override")
 	configCmd.AddCommand(staleDaysCmd)
+	terminalCmd.Flags().BoolVar(&terminalJSON, "json", false, "print the setting as JSON; an empty terminal means detect")
+	configCmd.AddCommand(terminalCmd)
 	rootCmd.AddCommand(configCmd)
 }

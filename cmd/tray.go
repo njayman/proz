@@ -8,6 +8,7 @@ import (
 
 	"github.com/njayman/proz/autostart"
 	"github.com/njayman/proz/core"
+	"github.com/njayman/proz/notify"
 	"github.com/njayman/proz/tray"
 	"github.com/spf13/cobra"
 )
@@ -62,9 +63,18 @@ func trayEnabled() bool {
 }
 
 // resumeDetached opens a project from the tray, where there is no terminal:
-// the program starts on its own. ponytail: first program only; terminal
-// editors (vim) need a terminal and will not show; use 'proz resume' there.
+// the program starts on its own, terminal programs in the user's terminal.
+// A failure is also shown as a notification, so a launch is never silently
+// lost. ponytail: first program only.
 func resumeDetached(id int64) error {
+	err := resumeTray(id)
+	if err != nil {
+		notify.Send([]notify.Message{{Title: "proz could not open the project", Body: err.Error()}})
+	}
+	return err
+}
+
+func resumeTray(id int64) error {
 	var cmd *exec.Cmd
 	var p core.Project
 	if err := withStore(func(s *core.Store) error {
@@ -77,7 +87,7 @@ func resumeDetached(id int64) error {
 		if len(p.Programs) > 0 {
 			program = p.Programs[0]
 		}
-		cmd, err = s.Launch(p, program)
+		cmd, err = s.Launch(p, program, false)
 		return err
 	}); err != nil {
 		return err
@@ -85,11 +95,7 @@ func resumeDetached(id int64) error {
 	if cmd == nil {
 		return fmt.Errorf("%s has no folder or program to open; run 'proz resume %s' in a terminal", p.Name, p.Name)
 	}
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	go cmd.Wait() // reap it when it exits, so no zombie lingers
-	return nil
+	return startDetached(cmd)
 }
 
 var trayAutostartCmd = &cobra.Command{

@@ -699,3 +699,22 @@ func noop(t *testing.T) string {
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return name
 }
+
+// Agents fix a person's terminal with `proz config terminal --json`.
+func TestConfigTerminalJSONContract(t *testing.T) {
+	configDir(t)
+	var got map[string]string
+	if err := json.Unmarshal([]byte(run(t, "config", "terminal", "--json")), &got); err != nil || got["terminal"] != "" {
+		t.Fatalf("unset: want empty terminal, got %v, %v", got, err)
+	}
+	if err := json.Unmarshal([]byte(run(t, "config", "terminal", "wezterm start --", "--json")), &got); err != nil || got["terminal"] != "wezterm start --" {
+		t.Fatalf("set: got %v, %v", got, err)
+	}
+	if out := strings.TrimSpace(run(t, "config", "terminal")); out != "wezterm start --" {
+		t.Fatalf("plain: got %q", out)
+	}
+	run(t, "config", "terminal", "")
+	if out := strings.TrimSpace(run(t, "config", "terminal")); out != "detect" {
+		t.Fatalf("cleared: got %q", out)
+	}
+}
