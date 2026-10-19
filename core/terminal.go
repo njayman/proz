@@ -345,9 +345,9 @@ func kdeTerminal() string {
 	if !strings.Contains(os.Getenv("XDG_CURRENT_DESKTOP"), "KDE") {
 		return ""
 	}
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return ""
+	dir := os.Getenv("XDG_CONFIG_HOME") // KDE's own config folder, whatever the system
+	if dir == "" {
+		dir = filepath.Join(os.Getenv("HOME"), ".config")
 	}
 	b, err := os.ReadFile(filepath.Join(dir, "kdeglobals"))
 	if err != nil {
