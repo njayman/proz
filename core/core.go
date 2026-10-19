@@ -350,7 +350,7 @@ func (s *Store) Launch(p Project, program string, attached bool) (*exec.Cmd, err
 	}
 	args := append([]string{program}, append(slices.Clone(p.Arguments), p.Path)...)
 	if !attached && needsTerminal(program) {
-		term, err := s.runInTerminal()
+		term, err := s.runInTerminal(p.Path)
 		if err != nil {
 			return nil, fmt.Errorf("no terminal found to open %s in; %w", program, err)
 		}
