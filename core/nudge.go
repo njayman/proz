@@ -1,12 +1,13 @@
 package core
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -168,28 +169,54 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Read each project's signals in parallel, each under one git deadline,
+	// so a slow repository costs at most the limit and slow ones do not add up.
+	type signals struct {
+		g       gitState
+		hasGit  bool
+		missing bool
+		work    workState
+		cl      claudeState
+		hasCl   bool
+	}
+	sig := make([]signals, len(found))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 8) // ponytail: 8 projects at a time, so git processes do not swamp the machine
+	for i, r := range found {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			ctx, cancel := context.WithTimeout(context.Background(), gitLimit)
+			defer cancel()
+			path, x := r.st.Path, &sig[i]
+			x.g, x.hasGit = readGit(ctx, path)
+			if path != "" {
+				_, err := os.Stat(path)
+				// gone, or a parent replaced by a file; permission denied is not missing
+				x.missing = errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
+				if !x.missing {
+					x.work = readWork(ctx, path, now, ignore)
+				}
+			}
+			x.cl, x.hasCl = readClaude(path)
+		}()
+	}
+	wg.Wait()
+
 	out := make([]Status, 0, len(found))
-	for _, r := range found {
+	for i, r := range found {
 		st := r.st
 		st.LastActivity = time.Unix(r.recorded, 0)
-		g, hasGit := readGit(st.Path)
+		g, hasGit, missing, work := sig[i].g, sig[i].hasGit, sig[i].missing, sig[i].work
 		if hasGit && g.when.After(st.LastActivity) {
 			st.LastActivity = g.when
-		}
-		missing := false
-		if st.Path != "" {
-			_, err := os.Stat(st.Path)
-			// gone, or a parent replaced by a file; permission denied is not missing
-			missing = errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
-		}
-		var work workState
-		if st.Path != "" && !missing {
-			work = readWork(st.Path, now, ignore)
 		}
 		if work.when.After(st.LastActivity) {
 			st.LastActivity = work.when
 		}
-		cl, hasClaude := readClaude(st.Path)
+		cl, hasClaude := sig[i].cl, sig[i].hasCl
 		if hasClaude && cl.when.After(st.LastActivity) {
 			st.LastActivity = cl.when
 		}
@@ -260,12 +287,12 @@ type gitState struct {
 // ok is false when dir is empty, git is missing, or no such commit exists, so
 // the project falls back to its other signals; a nudge is the safe failure.
 // ponytail: two or three git processes per project per call; cache by HEAD mtime if project counts grow large.
-func readGit(dir string) (g gitState, ok bool) {
+func readGit(ctx context.Context, dir string) (g gitState, ok bool) {
 	if dir == "" {
 		return g, false
 	}
 	// %S is a ref the commit was reached from, so the branch matches the commit.
-	out, err := exec.Command("git", "-C", dir, "log", "-1", "--source", "--branches", "HEAD", "--format=%ct%x00%H%x00%S%x00%s", "--", ".").Output()
+	out, err := gitCmd(ctx, dir, "log", "-1", "--source", "--branches", "HEAD", "--format=%ct%x00%H%x00%S%x00%s", "--", ".").Output()
 	if err != nil {
 		return g, false
 	}
@@ -281,9 +308,9 @@ func readGit(dir string) (g gitState, ok bool) {
 	g.branch = strings.TrimPrefix(f[2], "refs/heads/") // git prints either form
 	// A commit on several branches names the first in git's order; the
 	// checked-out one wins when it holds the commit. Empty if detached.
-	if out, err := exec.Command("git", "-C", dir, "branch", "--show-current").Output(); err == nil {
+	if out, err := gitCmd(ctx, dir, "branch", "--show-current").Output(); err == nil {
 		if cur := strings.TrimSpace(string(out)); g.branch == "HEAD" || cur != "" && cur != g.branch &&
-			exec.Command("git", "-C", dir, "merge-base", "--is-ancestor", f[1], "HEAD").Run() == nil {
+			gitCmd(ctx, dir, "merge-base", "--is-ancestor", f[1], "HEAD").Run() == nil {
 			g.branch = cur
 		}
 	}

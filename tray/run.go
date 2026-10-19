@@ -26,6 +26,7 @@ func onReady(d Deps) {
 	var mu sync.Mutex           // guards rebuilding the menu, never held while checking
 	done := make(chan struct{}) // closed when the menu is rebuilt, to stop old click listeners
 	var show func()
+	var render func(View)
 	show = func() {
 		mu.Lock()
 		defer mu.Unlock()
@@ -37,6 +38,10 @@ func onReady(d Deps) {
 		if err != nil {
 			d.Log(err)
 		}
+		render(v)
+	}
+	// render replaces the menu with v; the caller holds mu.
+	render = func(v View) {
 		systray.SetIcon(Icon(v.Dot, runtime.GOOS))
 		systray.SetTooltip(v.Tooltip)
 
@@ -52,13 +57,20 @@ func onReady(d Deps) {
 			}
 			on(m.AddSubMenuItem("Drop", "Archive until there is new activity"), done, func() { act(d, d.Drop, it.ID, show) })
 		}
-		if len(v.Items) > 0 {
+		if v.Loading {
+			systray.AddMenuItem("Checking projects…", "").Disable()
+		}
+		if len(v.Items) > 0 || v.Loading {
 			systray.AddSeparator()
 		}
 		on(systray.AddMenuItem("Check now", ""), done, func() { go check(d, show) })
 		on(systray.AddMenuItem("Quit proz tray", ""), done, systray.Quit)
 	}
-	show() // icon and menu first, then the slower check
+	// the menu at once, its projects once their git status is in
+	mu.Lock()
+	render(View{Loading: true, Tooltip: "proz: checking projects"})
+	mu.Unlock()
+	go show()
 	go watchOff(d.Enabled, offPoll, systray.Quit)
 	go func() {
 		check(d, show)

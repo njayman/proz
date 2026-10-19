@@ -1,9 +1,9 @@
 package core
 
 import (
+	"context"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -34,14 +34,17 @@ type workState struct {
 // Times after now (clock skew, extracted archives) and anything under the
 // folders in ignore (the proz store, the brain) never count.
 // ponytail: --untracked-files=all lists every file of an untracked, unignored dependency folder before it is skipped.
-func readWork(dir string, now time.Time, ignore []string) (w workState) {
+func readWork(ctx context.Context, dir string, now time.Time, ignore []string) (w workState) {
 	// one call: the repository root, then dir's path inside it
-	out, err := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel", "--show-prefix").Output()
+	out, err := gitCmd(ctx, dir, "rev-parse", "--show-toplevel", "--show-prefix").Output()
+	if ctx.Err() != nil {
+		return w // git is too slow here; walking the folder would be too
+	}
 	if err != nil {
 		return walkNewest(dir, now, ignore)
 	}
 	top, prefix, _ := strings.Cut(strings.TrimRight(string(out), "\n"), "\n")
-	cmd := exec.Command("git", "-C", dir, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".")
+	cmd := gitCmd(ctx, dir, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".")
 	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0") // read only: never contend with the user's git
 	status, err := cmd.Output()
 	if err != nil {
