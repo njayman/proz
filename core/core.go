@@ -355,11 +355,9 @@ func (s *Store) Launch(p Project, program string, attached bool) (*exec.Cmd, err
 			return nil, err
 		}
 		if need.On {
-			term, err := s.runInTerminal(p.Path)
-			if err != nil {
+			if args, err = s.runInTerminal(p.Path, args); err != nil {
 				return nil, fmt.Errorf("no terminal found to open %s in; %w", program, err)
 			}
-			args = append(term, args...)
 		}
 	}
 	cmd := exec.Command(args[0], args[1:]...)

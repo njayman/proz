@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -183,15 +184,10 @@ func (s *Store) LaunchTerminal(p Project, attached bool) (*exec.Cmd, error) {
 	if attached {
 		args = []string{cmp.Or(os.Getenv("SHELL"), os.Getenv("ComSpec"), "/bin/sh")}
 	} else {
-		term, err := s.runInTerminal(p.Path)
-		if err != nil {
+		var err error
+		if args, err = s.runInTerminal(p.Path, nil); err != nil {
 			return nil, fmt.Errorf("no terminal found to open %s in; %w", p.Name, err)
 		}
-		// no program to run: drop the separator that would come before it
-		if last := term[len(term)-1]; len(term) > 1 && (last == "--" || last == "-e" || last == "-x") {
-			term = term[:len(term)-1]
-		}
-		args = term
 	}
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = p.Path
@@ -199,23 +195,31 @@ func (s *Store) LaunchTerminal(p Project, attached bool) (*exec.Cmd, error) {
 }
 
 // runInTerminal finds the user's terminal emulator and returns the command
-// that runs a program in it, started in dir. Linux order: the setting,
-// xdg-terminal-exec, $TERMINAL, KDE's default, Sway's $term,
-// x-terminal-emulator, then known terminals. A step naming a program that is
-// not on PATH is skipped.
-func (s *Store) runInTerminal(dir string) ([]string, error) {
+// that runs program in it, started in dir; no program opens just the
+// terminal. Linux order: the setting, xdg-terminal-exec, $TERMINAL, KDE's
+// default, Sway's $term, x-terminal-emulator, then known terminals. A step
+// naming a program that is not on PATH is skipped.
+func (s *Store) runInTerminal(dir string, program []string) ([]string, error) {
 	set, err := s.Terminal()
 	if err != nil {
 		return nil, err
 	}
-	steps := []func() string{
-		func() string { return set },
+	steps := []func() string{func() string { return set }}
+	if goos == "darwin" {
+		if f := strings.Fields(set); len(f) > 0 {
+			if _, err := exec.LookPath(f[0]); err == nil {
+				return withProgram(runForm(set, dir, true), program), nil
+			}
+		}
+		return macTerminal(dir, program), nil
+	}
+	steps = append(steps,
 		func() string { return "xdg-terminal-exec" },
 		func() string { return os.Getenv("TERMINAL") },
 		kdeTerminal,
 		swayTerminal,
 		func() string { return "x-terminal-emulator" },
-	}
+	)
 	for _, k := range knownTerminals {
 		steps = append(steps, func() string { return k.name })
 	}
@@ -223,11 +227,87 @@ func (s *Store) runInTerminal(dir string) ([]string, error) {
 		t := step()
 		if f := strings.Fields(t); len(f) > 0 {
 			if _, err := exec.LookPath(f[0]); err == nil {
-				return runForm(t, dir, i == 0), nil
+				return withProgram(runForm(t, dir, i == 0), program), nil
 			}
 		}
 	}
 	return nil, ErrNoTerminal
+}
+
+// withProgram appends program to a terminal's run form; with no program it
+// drops the separator that would have come before it.
+func withProgram(term, program []string) []string {
+	if len(program) > 0 {
+		return append(term, program...)
+	}
+	if last := term[len(term)-1]; len(term) > 1 && (last == "--" || last == "-e" || last == "-x") {
+		term = term[:len(term)-1]
+	}
+	return term
+}
+
+// goos is the system core behaves as; tests pretend to be another.
+var goos = runtime.GOOS
+
+// macApps are the macOS terminals proz prefers, in order, with the program
+// inside each app bundle.
+var macApps = []struct{ app, bin string }{
+	{"iTerm", ""}, {"WezTerm", "wezterm"}, {"kitty", "kitty"}, {"Ghostty", "ghostty"}, {"Alacritty", "alacritty"},
+}
+
+// The AppleScript run for Terminal.app and iTerm2; the shell line travels
+// as an argument, never spliced into the script.
+const (
+	terminalAppScript = `on run argv
+tell application "Terminal"
+activate
+do script (item 1 of argv)
+end tell
+end run`
+	iTermScript = `on run argv
+tell application "iTerm"
+activate
+set w to (create window with default profile)
+tell current session of w to write text (item 1 of argv)
+end tell
+end run`
+)
+
+// macTerminal is the command that runs program in dir on macOS: the first
+// preferred app installed in ~/Applications or /Applications, else
+// Terminal.app, which is always there.
+func macTerminal(dir string, program []string) []string {
+	line := "cd " + shellQuote(dir)
+	if len(program) > 0 {
+		q := make([]string, len(program))
+		for i, a := range program {
+			q[i] = shellQuote(a)
+		}
+		line += " && exec " + strings.Join(q, " ")
+	}
+	home, _ := os.UserHomeDir()
+	for _, a := range macApps {
+		for _, root := range []string{filepath.Join(home, "Applications"), "/Applications"} {
+			bundle := filepath.Join(root, a.app+".app")
+			if _, err := os.Stat(bundle); err != nil {
+				continue
+			}
+			switch a.app {
+			case "iTerm":
+				return []string{"osascript", "-e", iTermScript, line}
+			case "Ghostty":
+				// Ghostty on macOS is started through open, not its binary
+				return withProgram(append([]string{"open", "-na", bundle, "--args"}, runForm("ghostty", dir, false)[1:]...), program)
+			}
+			return withProgram(runForm(filepath.Join(bundle, "Contents", "MacOS", a.bin), dir, false), program)
+		}
+	}
+	return []string{"osascript", "-e", terminalAppScript, line}
+}
+
+// shellQuote quotes s for a POSIX shell.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // kdeTerminal is KDE's default terminal from kdeglobals, as KIO reads it:
