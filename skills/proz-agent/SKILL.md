@@ -111,16 +111,18 @@ proz <path>                # name = basename(path)
 proz add <name>             # registers $PWD under <name>
 ```
 
-Both run non-interactively when there's no TTY (this shell): they save the project with no program/arguments and print a warning to stderr, rather than hanging on a picker. That's expected, not an error. If the user wants a program attached, tell them to run `proz add <name>` themselves in a terminal, or run `proz edit <name>` afterward.
+Both run non-interactively when there's no TTY (this shell): they save the project with no program/arguments and print a warning to stderr, rather than hanging on a picker. That's expected, not an error. If the user names the program they want attached, set it afterward with `proz edit <name> --program <program>`.
 
 ## Edit / delete
 
 ```bash
-proz edit <name>     # non-interactive: only fills in fields it can read from stdin, otherwise leaves them unchanged
+proz edit <name> --name <new name>                 # rename it
+proz edit <name> --program code --program nvim     # set the programs it opens in, the first being the main one
+proz edit <name> --program ""                      # remove its programs
 proz delete <name>   # or: proz rm <name>
 ```
 
-`proz edit` without a TTY is effectively a no-op unless you pipe values to it; prefer telling the user to run it interactively if they want to change the program or arguments.
+With `--name` or `--program`, `proz edit` changes only those and never prompts; the folder and arguments stay as they were. These are what the launcher's setup view does. Without them, `proz edit` without a TTY is effectively a no-op unless you pipe values to it; tell the user to run it themselves if they want to change the arguments. Rename or change programs only when the user asks.
 
 ## Do not
 

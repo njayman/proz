@@ -24,7 +24,14 @@ import (
 func execute(args ...string) error {
 	var reset func(*cobra.Command)
 	reset = func(c *cobra.Command) {
-		c.Flags().VisitAll(func(f *pflag.Flag) { f.Value.Set(f.DefValue); f.Changed = false })
+		c.Flags().VisitAll(func(f *pflag.Flag) {
+			if v, ok := f.Value.(pflag.SliceValue); ok { // Set appends to a slice
+				v.Replace(nil)
+			} else {
+				f.Value.Set(f.DefValue)
+			}
+			f.Changed = false
+		})
 		for _, sub := range c.Commands() {
 			reset(sub)
 		}
@@ -793,5 +800,34 @@ func TestResumeAgentStartsTheAgentCLIInTheProjectFolder(t *testing.T) {
 	}
 	if err := execute("resume", "web", "--agent", "claude", "--terminal"); err == nil {
 		t.Fatal("--agent and --terminal together should fail")
+	}
+}
+
+// Agents rename a project and set its programs without a terminal, as the
+// launcher's setup does.
+func TestEditWithFlagsSetsNameAndProgramsWithoutPrompting(t *testing.T) {
+	configDir(t)
+	run(t, "idea", "habit tracker")
+	run(t, "edit", "habit tracker", "--name", "habits", "--program", "code", "--program", "nvim")
+	var got []Project
+	if err := json.Unmarshal([]byte(run(t, "list", "--json")), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Name != "habits" || !reflect.DeepEqual(got[0].Programs, []string{"code", "nvim"}) {
+		t.Fatalf("got %+v", got)
+	}
+	run(t, "edit", "habits", "--program", "")
+	got = nil
+	if err := json.Unmarshal([]byte(run(t, "list", "--json")), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got[0].Name != "habits" || len(got[0].Programs) != 0 {
+		t.Fatalf("--program \"\" clears them and keeps the name: %+v", got)
+	}
+	if execute("edit", "nope", "--name", "x") == nil {
+		t.Fatal("a missing project must fail")
+	}
+	if execute("edit", "habits", "--name", " ") == nil {
+		t.Fatal("an empty name must fail")
 	}
 }

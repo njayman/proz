@@ -73,9 +73,9 @@ Opens the program picker: desktop applications by default, Tab for all PATH bina
 
 Deletes a project. Without a name, opens the picker to select one.
 
-### `proz edit <name>`
+### `proz edit <name> [--name <new name>] [--program <program>]...`
 
-TUI form to update name, programs (space-separated), or arguments. Falls back to text prompts if the TUI is unavailable.
+TUI form to update name, programs (space-separated), or arguments. Falls back to text prompts if the TUI is unavailable. With `--name` or `--program` (repeat it for several; `--program ""` removes them) it changes just those without prompting, the way the launcher's setup does.
 
 ### `proz rm <name>`
 

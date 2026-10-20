@@ -39,8 +39,9 @@ var statusesOf = (*core.Store).Statuses
 // New fills w with the launcher over s: a filter box over the project list
 // on the left, the selected project on the right. Typing filters, Up and Down
 // move, Enter opens the selection with its main program and closes the
-// window, Esc clears the filter and then closes. Ctrl+, shows the settings
-// in its place. The list shows at once; signals fill in as they come.
+// window (or sets up an idea), Esc clears the filter and then closes. Ctrl+N
+// shows setup for a new project in its place, Ctrl+, the settings. The list
+// shows at once; signals fill in as they come.
 func New(w fyne.Window, s *core.Store, launch Launch) {
 	projects, err := s.Projects()
 	if err != nil {
@@ -56,6 +57,7 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 	agents := core.AgentCLIsOnPath() // ponytail: read once per window; the tray-started window has the session PATH
 	var open func(Way)
 	var act func(func(int64) error)
+	var showSetup func(core.Project)
 
 	list := newProjectList(
 		func() int { return len(shown) },
@@ -89,7 +91,7 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 			detail.Add(note)
 		}
 		detail.Add(widget.NewSeparator())
-		if st.Path != "" { // ponytail: ideas get Set up… here with #93
+		if st.Path != "" { // an idea has no folder to open yet
 			ways := waysToOpen(st.Project, agents)
 			main := widget.NewButton(ways[0].label, func() { open(ways[0].Way) })
 			main.Importance = widget.HighImportance
@@ -107,12 +109,12 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 			more.PlaceHolder = "More ways to open"
 			detail.Add(container.NewHBox(main, more))
 		}
+		row := container.NewHBox(widget.NewButton("Set up…", func() { showSetup(st.Project) }))
 		if st.State != core.StateArchived {
-			detail.Add(container.NewHBox(
-				widget.NewButton("Snooze a week", func() { act(func(id int64) error { return s.Snooze(id, 7*24*time.Hour) }) }),
-				widget.NewButton("Drop", func() { act(s.Drop) }),
-			))
+			row.Add(widget.NewButton("Snooze a week", func() { act(func(id int64) error { return s.Snooze(id, 7*24*time.Hour) }) }))
+			row.Add(widget.NewButton("Drop", func() { act(s.Drop) }))
 		}
+		detail.Add(row)
 	}
 	// choose selects row i of what is shown, or nothing when it is empty.
 	choose := func(i int) {
@@ -161,7 +163,11 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 			picked = true
 			choose(selected + step)
 		case fyne.KeyReturn, fyne.KeyEnter:
-			if len(shown) > 0 && shown[selected].Path != "" { // ponytail: Enter on an idea opens setup with #93
+			switch {
+			case len(shown) == 0:
+			case shown[selected].Path == "": // an idea opens its setup
+				showSetup(shown[selected].Project)
+			default:
 				open(waysToOpen(shown[selected].Project, nil)[0].Way)
 			}
 		case fyne.KeyEscape:
@@ -190,9 +196,52 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 		})
 	}
 	showSettings := func() { show(settings(s, goHome)) }
+	// saved writes p through the store and goes home with it selected,
+	// keeping the signals already in until load brings fresh ones.
+	saved := func(p core.Project) error {
+		add := p.ID == 0
+		var err error
+		if add {
+			err = s.AddProject(p)
+		} else {
+			err = s.UpdateProject(p)
+		}
+		if err != nil {
+			return err
+		}
+		ps, err := s.Projects()
+		if err != nil {
+			return err
+		}
+		if add {
+			p.ID = ps[len(ps)-1].ID // ponytail: the newest is ours; an agent adding one in the same instant could swap them
+		}
+		had := map[int64]core.Status{}
+		for _, st := range all {
+			had[st.ID] = st
+		}
+		projects, all = ps, make([]core.Status, len(ps))
+		for i, q := range ps {
+			all[i] = had[q.ID]
+			all[i].Project = q
+		}
+		core.RemindOrder(all)
+		filter.SetText("") // so it is listed
+		shown, picked = all, true
+		list.Refresh()
+		choose(slices.IndexFunc(shown, func(st core.Status) bool { return st.ID == p.ID }))
+		goHome()
+		return nil
+	}
+	showSetup = func(p core.Project) {
+		view, first := setup(p, saved, goHome)
+		show(view)
+		w.Canvas().Focus(first)
+	}
+	newProject := func() { showSetup(core.Project{}) }
 	ctrl[fyne.KeyComma] = showSettings
-	ctrl[fyne.KeyN] = func() {} // ponytail: Ctrl+N does nothing until setup (#93) exists
-	for k, do := range ctrl {   // for views without the filter box
+	ctrl[fyne.KeyN] = newProject
+	for k, do := range ctrl { // for views without the filter box
 		w.Canvas().AddShortcut(&desktop.CustomShortcut{KeyName: k, Modifier: fyne.KeyModifierShortcutDefault}, func(fyne.Shortcut) { do() })
 	}
 
@@ -248,7 +297,8 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 
 	split := container.NewHSplit(container.NewBorder(filter, nil, nil, nil, list), container.NewVScroll(container.NewPadded(detail)))
 	split.Offset = listShare
-	toolbar := container.NewHBox(layout.NewSpacer(), darkToggle(w, s), widget.NewButtonWithIcon("Settings", theme.SettingsIcon(), showSettings))
+	toolbar := container.NewHBox(widget.NewButtonWithIcon("New…", theme.ContentAddIcon(), newProject), layout.NewSpacer(),
+		darkToggle(w, s), widget.NewButtonWithIcon("Settings", theme.SettingsIcon(), showSettings))
 	home = container.NewBorder(toolbar, nil, nil, nil, split)
 	w.SetContent(home)
 	choose(0) // once the filter box is on the canvas, so it can take the focus

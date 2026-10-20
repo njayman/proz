@@ -911,12 +911,3 @@ func TestEscFromATextBoxCheckBoxOrMenuInSettingsReturnsHome(t *testing.T) {
 		t.Fatalf("Esc on the weekly email menu: %q", texts(w))
 	}
 }
-
-func TestEnterOnAnIdeaOpensNothing(t *testing.T) {
-	slowStatuses(t)
-	w, got, closed := launcher(t, core.Project{Name: "someday"})
-	press(w, fyne.KeyReturn)
-	if len(*got) != 0 || *closed {
-		t.Fatalf("an idea has no folder to open: opened %+v, closed %v", *got, *closed)
-	}
-}
