@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -44,6 +45,24 @@ func TestLinkToAToolProzDoesNotRecognize(t *testing.T) {
 	if got := linksJSON(t, run(t, "link", "acme/web#3", "web", "--json")); got[2].Ref != "https://github.com/acme/web/issues/3" {
 		t.Fatalf("short form: %+v", got)
 	}
+}
+
+func TestLinkALocalNotesFolder(t *testing.T) {
+	dir := configDir(t)
+	run(t, "idea", "web")
+	vault := filepath.Join(dir, "vault")
+	mkdirs(t, filepath.Join(vault, ".obsidian"), filepath.Join(vault, "web"))
+	t.Chdir(vault)
+	got := linksJSON(t, run(t, "link", "web", "web", "--json")) // a folder here wins over owner/repo
+	notes, _ := filepath.EvalSymlinks(filepath.Join(vault, "web"))
+	if want := (core.Link{Kind: "brain", Provider: "obsidian", Ref: notes}); len(got) != 1 || got[0] != want {
+		t.Fatalf("got %+v", got)
+	}
+	os.RemoveAll(notes)
+	if out := run(t, "status", "web"); !strings.Contains(out, "Link missing: "+notes) {
+		t.Fatalf("status: %q", out)
+	}
+	run(t, "unlink", notes, "web")
 }
 
 // Agents parse the links array on every project; field names are a contract.

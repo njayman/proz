@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -15,7 +17,7 @@ import (
 type Link struct {
 	Kind     string `json:"kind"`     // LinkTracker or LinkBrain
 	Provider string `json:"provider"` // such as github or notion
-	Ref      string `json:"ref"`      // the canonical web URL
+	Ref      string `json:"ref"`      // the canonical web URL, or a local absolute path
 	Missing  bool   `json:"missing"`  // a local link that is gone; a web link never is
 }
 
@@ -74,45 +76,27 @@ func (e *UnknownHostError) Error() string {
 		e.Host, strings.Join(Providers(), ", "), LinkTracker, LinkBrain)
 }
 
-// AddLink links project id to ref, a URL or a short form (see expand). An
-// empty provider is recognized from the host: a preset, or one an earlier
-// link named. A named provider wins for this link and is remembered for its
-// host. An empty kind takes the provider's default; linking a ref the
-// project already has updates it.
+// AddLink links project id to ref: an absolute path to a local file or
+// folder, a URL, or a short form (see expand). A local link is always a
+// brain, named from what is on disk (see notesTool). For a URL an empty
+// provider is recognized from the host: a preset, or one an earlier link
+// named. A named provider wins for this link and is remembered for its host.
+// An empty kind takes the provider's default; linking a ref the project
+// already has updates it.
 func (s *Store) AddLink(id int64, ref, provider, kind string) (Link, error) {
-	u, err := s.expand(ref)
-	if err != nil {
-		return Link{}, err
-	}
-	l := Link{Ref: u.String(), Provider: provider, Kind: kind}
-	if l.Provider != "" {
-		if !slices.Contains(Providers(), l.Provider) && l.Provider != "web" { // web, as proz prints it, is accepted back
-			return Link{}, fmt.Errorf("provider %q: want one of %s", provider, strings.Join(Providers(), ", "))
+	var l Link
+	var host string // none for a local link
+	if path := strings.TrimSpace(ref); filepath.IsAbs(path) {
+		l = Link{Kind: LinkBrain, Ref: resolve(path)}
+		l.Provider = notesTool(l.Ref)
+		if kind != "" && kind != LinkBrain || provider != "" && provider != l.Provider {
+			return Link{}, fmt.Errorf("%s is a %s link, always a brain: leave out its provider and kind", l.Ref, l.Provider)
 		}
-		if l.Provider == "other" {
-			l.Provider = "web"
-		}
-	} else if l.Provider = presetProvider(u.Host); l.Provider == "" {
-		var known string
-		err := s.db.QueryRow(`SELECT provider, kind FROM hosts WHERE workspace_id = ? AND host = ?`, DefaultWorkspace, u.Host).Scan(&l.Provider, &known)
-		if errors.Is(err, sql.ErrNoRows) {
-			return Link{}, &UnknownHostError{Host: u.Host}
-		}
-		if err != nil {
+	} else {
+		var err error
+		if l, host, err = s.recognize(ref, provider, kind); err != nil {
 			return Link{}, err
 		}
-		if l.Kind == "" {
-			l.Kind = known
-		}
-	}
-	if l.Kind == "" {
-		l.Kind = presetKind[l.Provider]
-	}
-	if l.Kind == "" {
-		return Link{}, fmt.Errorf("provider %s needs a kind too: %s or %s", provider, LinkTracker, LinkBrain)
-	}
-	if l.Kind != LinkTracker && l.Kind != LinkBrain {
-		return Link{}, fmt.Errorf("kind %q: want %s or %s", l.Kind, LinkTracker, LinkBrain)
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -126,13 +110,78 @@ func (s *Store) AddLink(id int64, ref, provider, kind string) (Link, error) {
 	if err := foundOrErr(res, err); err != nil {
 		return Link{}, err
 	}
-	if provider != "" { // presets are recognized before remembered hosts, so remembering one is harmless
+	if host != "" && provider != "" { // presets are recognized before remembered hosts, so remembering one is harmless
 		if _, err := tx.Exec(`INSERT OR REPLACE INTO hosts (workspace_id, host, provider, kind) VALUES (?, ?, ?, ?)`,
-			DefaultWorkspace, u.Host, l.Provider, l.Kind); err != nil {
+			DefaultWorkspace, host, l.Provider, l.Kind); err != nil {
 			return Link{}, err
 		}
 	}
 	return l, tx.Commit()
+}
+
+// recognize is the link a URL or short form makes, and its host.
+func (s *Store) recognize(ref, provider, kind string) (Link, string, error) {
+	u, err := s.expand(ref)
+	if err != nil {
+		return Link{}, "", err
+	}
+	l := Link{Ref: u.String(), Provider: provider, Kind: kind}
+	if l.Provider != "" {
+		if !slices.Contains(Providers(), l.Provider) && l.Provider != "web" { // web, as proz prints it, is accepted back
+			return Link{}, "", fmt.Errorf("provider %q: want one of %s", provider, strings.Join(Providers(), ", "))
+		}
+		if l.Provider == "other" {
+			l.Provider = "web"
+		}
+	} else if l.Provider = presetProvider(u.Host); l.Provider == "" {
+		var known string
+		err := s.db.QueryRow(`SELECT provider, kind FROM hosts WHERE workspace_id = ? AND host = ?`, DefaultWorkspace, u.Host).Scan(&l.Provider, &known)
+		if errors.Is(err, sql.ErrNoRows) {
+			return Link{}, "", &UnknownHostError{Host: u.Host}
+		}
+		if err != nil {
+			return Link{}, "", err
+		}
+		if l.Kind == "" {
+			l.Kind = known
+		}
+	}
+	if l.Kind == "" {
+		l.Kind = presetKind[l.Provider]
+	}
+	if l.Kind == "" {
+		return Link{}, "", fmt.Errorf("provider %s needs a kind too: %s or %s", provider, LinkTracker, LinkBrain)
+	}
+	if l.Kind != LinkTracker && l.Kind != LinkBrain {
+		return Link{}, "", fmt.Errorf("kind %q: want %s or %s", l.Kind, LinkTracker, LinkBrain)
+	}
+	return l, u.Host, nil
+}
+
+// notesTool names the local notes at path: obsidian or logseq when a vault
+// (.obsidian) or graph (logseq) folder sits at or above it, else folder.
+func notesTool(path string) string {
+	for dir := path; ; dir = filepath.Dir(dir) {
+		if isDir(filepath.Join(dir, ".obsidian")) {
+			return "obsidian"
+		}
+		if isDir(filepath.Join(dir, "logseq")) {
+			return "logseq"
+		}
+		if filepath.Dir(dir) == dir {
+			return "folder"
+		}
+	}
+}
+
+// notesRoot reports whether dir holds a whole vault or graph.
+func notesRoot(dir string) bool {
+	return isDir(filepath.Join(dir, ".obsidian")) || isDir(filepath.Join(dir, "logseq"))
+}
+
+func isDir(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.IsDir()
 }
 
 var (
@@ -209,6 +258,7 @@ func (s *Store) links() (map[int64][]Link, error) {
 		if err := rows.Scan(&id, &l.Kind, &l.Provider, &l.Ref); err != nil {
 			return nil, err
 		}
+		l.Missing = filepath.IsAbs(l.Ref) && missing(l.Ref)
 		out[id] = append(out[id], l)
 	}
 	return out, rows.Err()
@@ -216,13 +266,16 @@ func (s *Store) links() (map[int64][]Link, error) {
 
 // RemoveLink removes ref from project id's links; other projects keep theirs.
 func (s *Store) RemoveLink(id int64, ref string) error {
-	u, err := s.expand(ref)
-	if err != nil {
+	if path := strings.TrimSpace(ref); filepath.IsAbs(path) {
+		ref = resolve(path)
+	} else if u, err := s.expand(ref); err != nil {
 		return err
+	} else {
+		ref = u.String()
 	}
-	res, err := s.db.Exec(`DELETE FROM links WHERE project_id = ? AND workspace_id = ? AND ref = ?`, id, DefaultWorkspace, u.String())
+	res, err := s.db.Exec(`DELETE FROM links WHERE project_id = ? AND workspace_id = ? AND ref = ?`, id, DefaultWorkspace, ref)
 	if err = foundOrErr(res, err); errors.Is(err, ErrNotFound) {
-		return fmt.Errorf("%s is not a link of this project", u)
+		return fmt.Errorf("%s is not a link of this project", ref)
 	}
 	return err
 }
