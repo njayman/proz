@@ -89,7 +89,7 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 		}
 		render()
 	}
-	filter := newFilterBox()
+	filter := newFilterBox(w.Canvas())
 	// refilter shows the projects matching the filter, keeping the selected
 	// one selected when it still matches; else the top one.
 	refilter := func() {
@@ -179,11 +179,12 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 // onKey, so the cursor stays in it, and passes shortcuts to the window.
 type filterBox struct {
 	widget.Entry
-	onKey func(fyne.KeyName)
+	window fyne.Canvas
+	onKey  func(fyne.KeyName)
 }
 
-func newFilterBox() *filterBox {
-	f := &filterBox{}
+func newFilterBox(window fyne.Canvas) *filterBox {
+	f := &filterBox{window: window}
 	f.ExtendBaseWidget(f)
 	f.PlaceHolder = "Filter"
 	return f
@@ -199,15 +200,13 @@ func (f *filterBox) TypedKey(e *fyne.KeyEvent) {
 }
 
 func (f *filterBox) TypedShortcut(s fyne.Shortcut) {
-	if _, ok := s.(*desktop.CustomShortcut); ok { // Ctrl+N and Ctrl+, belong to the window
-		if c := fyne.CurrentApp().Driver().CanvasForObject(f); c != nil {
-			if h, ok := c.(interface{ TypedShortcut(fyne.Shortcut) }); ok {
-				h.TypedShortcut(s)
-			}
+	if c, ok := s.(*desktop.CustomShortcut); ok && (c.KeyName == fyne.KeyN || c.KeyName == fyne.KeyComma) {
+		if h, ok := f.window.(interface{ TypedShortcut(fyne.Shortcut) }); ok { // Ctrl+N and Ctrl+, belong to the window
+			h.TypedShortcut(s)
 		}
 		return
 	}
-	f.Entry.TypedShortcut(s)
+	f.Entry.TypedShortcut(s) // its own word editing, such as Ctrl+Backspace
 }
 
 func (f *filterBox) AccessibilityLabel() string             { return "Filter projects" }

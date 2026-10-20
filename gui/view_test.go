@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -478,5 +479,15 @@ func TestTheFilterBoxAndListNameThemselvesToScreenReaders(t *testing.T) {
 		if !slices.Contains(names, want) {
 			t.Fatalf("no %q for screen readers: %q", want, names)
 		}
+	}
+}
+
+func TestCtrlEditingKeysStillWorkInTheFilterBox(t *testing.T) {
+	slowStatuses(t)
+	w, _, _ := launcher(t, core.Project{Name: "web", Path: "/src/web"}, core.Project{Name: "api", Path: "/src/api"})
+	typeText(w, "webzzz") // matches nothing until the word is deleted
+	w.Canvas().Focused().(fyne.Shortcutable).TypedShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyBackspace, Modifier: fyne.KeyModifierShortcutDefault})
+	if s := texts(w); !slices.Contains(s, "web") || !slices.Contains(s, "api") {
+		t.Fatalf("Ctrl+Backspace must delete the filter's last word: %q", s)
 	}
 }
