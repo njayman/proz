@@ -103,3 +103,24 @@ func TestSlowGitStillSeesRecentEditsAndSaysSo(t *testing.T) {
 		t.Fatalf("want the note to say git was slow:\n%s", st.Note.Full())
 	}
 }
+
+func TestAProjectsFoldersShareOneGitLimit(t *testing.T) {
+	s := open(t, t.TempDir())
+	slowGit(t)
+	s.AddProject(Project{Name: "app", Path: t.TempDir()})
+	p := onlyProject(t, s)
+	for range 3 {
+		if err := s.AddFolder(p.ID, t.TempDir()); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	start := time.Now()
+	st, err := s.Status(p.ID)
+	if took := time.Since(start); err != nil || took > 800*time.Millisecond {
+		t.Fatalf("four slow folders took %v (%v), want about one 300ms limit", took, err)
+	}
+	if !strings.Contains(st.Note.Full(), "Git too slow to read changes") {
+		t.Fatalf("want the note to say git was slow:\n%s", st.Note.Full())
+	}
+}

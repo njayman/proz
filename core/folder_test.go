@@ -331,3 +331,109 @@ func TestASnoozeOutlivesAnIdeaBecomingAProjectAndBack(t *testing.T) {
 		t.Fatalf("state %q, %v", st.State, err)
 	}
 }
+
+func TestActivityAndTheNoteSpanEveryFolder(t *testing.T) {
+	c := &clock{t0}
+	s := openAt(t, c)
+	backend, _ := gitRepo(t)
+	frontend, _ := gitRepo(t)
+	gitCommit(t, backend, "api.go", t0.Add(2*day))
+	git(t, frontend, t0, "checkout", "-q", "-b", "redesign")
+	touch(t, frontend, "app.js", t0)
+	git(t, frontend, t0, "add", "-A")
+	git(t, frontend, t0.Add(5*day), "commit", "-q", "-m", "new header")
+	touch(t, backend, "todo.txt", t0.Add(day))
+	touch(t, frontend, "a.css", t0.Add(day))
+	touch(t, frontend, "b.css", t0.Add(day))
+
+	if err := s.AddProject(Project{Name: "app", Path: backend}); err != nil {
+		t.Fatal(err)
+	}
+	app := projectNamed(t, s, "app")
+	if err := s.AddFolder(app.ID, frontend); err != nil {
+		t.Fatal(err)
+	}
+
+	c.t = t0.Add(20 * day)
+	st, err := s.Status(app.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.LastActivity.Equal(t0.Add(5 * day)) {
+		t.Fatalf("last activity %v, want the frontend commit", st.LastActivity)
+	}
+	want := []string{"Quiet for 15 days", "Last commit: new header", "Branch: redesign", "Uncommitted: 3 files"}
+	if !reflect.DeepEqual(st.Note.Lines, want) {
+		t.Fatalf("note %q, want %q", st.Note.Lines, want)
+	}
+}
+
+func TestMissingFoldersAreNotedKeptAndSkipped(t *testing.T) {
+	c := &clock{t0}
+	s := openAt(t, c)
+	root := t.TempDir()
+	present, gone, alsoGone := filepath.Join(root, "present"), filepath.Join(root, "gone"), filepath.Join(root, "also-gone")
+	mkdirs(t, present, gone, alsoGone)
+	if err := s.AddProject(Project{Name: "app", Path: gone}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddProject(Project{Name: "lost", Path: alsoGone}); err != nil {
+		t.Fatal(err)
+	}
+	app := projectNamed(t, s, "app")
+	if err := s.AddFolder(app.ID, present); err != nil {
+		t.Fatal(err)
+	}
+	touch(t, present, "notes.md", t0.Add(3*day))
+	os.RemoveAll(gone)
+	os.RemoveAll(alsoGone)
+
+	c.t = t0.Add(20 * day)
+	st, err := s.Status(app.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.LastActivity.Equal(t0.Add(3*day)) || st.Note.Lines[len(st.Note.Lines)-1] != "Folder missing: "+gone {
+		t.Fatalf("last activity %v, note %q", st.LastActivity, st.Note.Lines)
+	}
+	if _, all := folderPaths(t, s, "app"); len(all) != 2 {
+		t.Fatalf("a missing folder must be kept: %v", all)
+	}
+	ns := nudgesAt(t, s)
+	if len(ns) != 2 || ns[1].Name != "lost" || ns[1].Note.Lines[1] != "Folder missing: "+alsoGone {
+		t.Fatalf("a project with only missing folders still resurfaces: %+v", ns)
+	}
+}
+
+func mkdirs(t *testing.T, dirs ...string) {
+	t.Helper()
+	for _, d := range dirs {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestTheBrainFolderIsNotActivityInAnyFolder(t *testing.T) {
+	c := &clock{t0}
+	s := openAt(t, c)
+	main, notes := t.TempDir(), t.TempDir()
+	brain := filepath.Join(notes, "brain")
+	mkdirs(t, brain)
+	if err := s.SetBrainPath(brain); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddProject(Project{Name: "app", Path: main}); err != nil {
+		t.Fatal(err)
+	}
+	app := projectNamed(t, s, "app")
+	if err := s.AddFolder(app.ID, notes); err != nil {
+		t.Fatal(err)
+	}
+	touch(t, brain, "app.md", t0.Add(5*day))
+
+	c.t = t0.Add(20 * day)
+	if st, err := s.Status(app.ID); err != nil || !st.LastActivity.Equal(t0) {
+		t.Fatalf("last activity %v, %v; want registration only", st.LastActivity, err)
+	}
+}

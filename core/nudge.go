@@ -172,12 +172,13 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Read each project's signals in parallel, each under one git deadline,
-	// so a slow repository costs at most the limit and slow ones do not add up.
+	// Read each project's signals in parallel, each under one git deadline
+	// for all its folders, so a slow repository costs at most the limit and
+	// slow ones do not add up.
 	type signals struct {
-		g       gitState
+		g       gitState // from the most recently active folder with git
 		hasGit  bool
-		missing bool
+		missing []string // folders that are gone; skipped, never removed
 		work    workState
 		cl      claudeState
 		hasCl   bool
@@ -194,16 +195,36 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 			defer func() { <-sem }()
 			ctx, cancel := context.WithTimeout(context.Background(), gitLimit)
 			defer cancel()
-			path, x := r.st.Path, &sig[i]
-			x.g, x.hasGit = readGit(ctx, path)
-			if path != "" {
-				x.missing = missing(path)
-				if !x.missing {
-					x.work = readWork(ctx, path, now, ignore)
+			x := &sig[i]
+			var gitActive time.Time // when the folder x.g came from was last active
+			// ponytail: a folder nested in another folder of the same project counts its uncommitted files twice
+			for _, f := range r.st.Folders {
+				if f.Missing {
+					x.missing = append(x.missing, f.Path)
+					continue
+				}
+				g, hasGit := readGit(ctx, f.Path)
+				work := readWork(ctx, f.Path, now, ignore)
+				cl, hasCl := readClaude(f.Path)
+				active := work.when
+				if hasGit && g.when.After(active) {
+					active = g.when
+				}
+				if hasCl && cl.when.After(active) {
+					active = cl.when
+				}
+				if hasGit && (!x.hasGit || active.After(gitActive)) {
+					x.g, x.hasGit, gitActive = g, true, active
+				}
+				if work.when.After(x.work.when) {
+					x.work.when = work.when
+				}
+				x.work.uncommitted += work.uncommitted
+				if hasCl && (!x.hasCl || cl.when.After(x.cl.when)) {
+					x.cl, x.hasCl = cl, true
 				}
 			}
 			x.slow = ctx.Err() != nil
-			x.cl, x.hasCl = readClaude(path)
 		}()
 	}
 	wg.Wait()
@@ -213,7 +234,7 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 		st := r.st
 		st.LastActivity = time.Unix(r.recorded, 0)
 		x := sig[i]
-		g, hasGit, missing, work := x.g, x.hasGit, x.missing, x.work
+		g, hasGit, work := x.g, x.hasGit, x.work
 		if hasGit && g.when.After(st.LastActivity) {
 			st.LastActivity = g.when
 		}
@@ -274,8 +295,8 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 		if hasClaude && prompts && cl.prompt != "" {
 			st.Note.Lines = append(st.Note.Lines, "Last prompt: "+cl.prompt)
 		}
-		if missing {
-			st.Note.Lines = append(st.Note.Lines, "Folder missing: "+st.Path)
+		for _, f := range x.missing {
+			st.Note.Lines = append(st.Note.Lines, "Folder missing: "+f)
 		}
 		out = append(out, st)
 	}
