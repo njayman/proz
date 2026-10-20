@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds the Windows installer on Linux and runs it under wine: install,
-# upgrade over itself, uninstall, with the same checks as
+# upgrade to a newer version, uninstall, with the same checks as
 # scripts/check-windows-installer.ps1 where wine can answer them.
 #
 # ponytail: wine only approximates Windows, and this packs the plain
@@ -20,10 +20,13 @@ set -eu
 
 cd "$(dirname "$0")/.."
 mkdir -p dist/windows
-CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -tags tray \
-  -ldflags="-s -w -X github.com/njayman/proz/cmd.version=0.0.0-wine" -o dist/windows/proz.exe .
-docker run --rm -v "$PWD:/work" amake/innosetup:latest /DVersion=0.0.0-wine packaging/windows/proz.iss >/dev/null
-setup=dist/proz-setup-windows-amd64.exe
+# Two versions, so the check can upgrade from one to the other.
+for version in 0.0.1-wine 0.0.2-wine; do
+  CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -tags tray \
+    -ldflags="-s -w -X github.com/njayman/proz/cmd.version=$version" -o dist/windows/proz.exe .
+  docker run --rm -v "$PWD:/work" amake/innosetup@sha256:e003376ba818547275fe10c95e2a29be0f2d12d45e9eb8f205b6672dc5685bb1 \
+    /DVersion=$version /Fproz-setup-$version packaging/windows/proz.iss >/dev/null
+done
 
 WINEPREFIX=$(mktemp -d)
 export WINEPREFIX WINEDEBUG=-all
@@ -33,7 +36,7 @@ wineboot -i >/dev/null 2>&1
 
 fail() { echo "FAIL: $*"; exit 1; }
 win() { wine "$@" 2>/dev/null; }
-install() { win "$setup" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER; wineserver -w; }
+install() { win "dist/proz-setup-$1.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART; wineserver -w; }
 home=$(winepath -u "$(win cmd /c echo %USERPROFILE% | tr -d '\r')")
 app="$home/AppData/Local/Programs/proz"
 lnk="$home/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/proz.lnk"
@@ -42,9 +45,9 @@ key='HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\{6F4A2B1E-8C3D-4E5
 userpath() { win reg query 'HKCU\Environment' /v Path | tr -d '\r' | sed -n 's/.*REG_EXPAND_SZ *//p'; }
 onpath() { userpath | tr ';' '\n' | grep -cixF "$(winepath -w "$app")" || true; }
 
-install
+install 0.0.1-wine
 [ -f "$app/proz.exe" ] || fail "no $app/proz.exe"
-win "$app/proz.exe" --version | grep -q 0.0.0-wine || fail "proz --version"
+win "$app/proz.exe" --version | grep -q 0.0.1-wine || fail "proz --version"
 [ -f "$lnk" ] || fail "no Start menu entry"
 tr -d '\0' <"$lnk" | grep -aq gui || fail "the Start menu entry does not pass gui"
 [ "$(onpath)" = 1 ] || fail "proz is not on the user PATH once: $(userpath)"
@@ -52,7 +55,8 @@ win reg query "$key" /v DisplayName | grep -q proz || fail "no uninstaller entry
 win "$app/proz.exe" list --json >/dev/null
 [ -f "$db" ] || fail "proz did not create its config folder"
 
-install
+install 0.0.2-wine
+win "$app/proz.exe" --version | grep -q 0.0.2-wine || fail "upgrading did not replace proz"
 [ "$(onpath)" = 1 ] || fail "upgrading changed the PATH entry: $(userpath)"
 
 win "$app/unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART; wineserver -w

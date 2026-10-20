@@ -65,11 +65,14 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build the installer
-        run: scripts/package-windows.ps1
+      - name: Build an older and a newer installer
+        run: |
+          scripts/package-windows.ps1 -Version 0.0.1-snapshot
+          Move-Item dist\proz-setup-windows-amd64.exe dist\proz-setup-previous.exe
+          scripts/package-windows.ps1 -Version 0.0.2-snapshot
 
-      - name: Install, upgrade and uninstall it silently
-        run: scripts/check-windows-installer.ps1 dist\proz-setup-windows-amd64.exe
+      - name: Install, upgrade and uninstall them silently
+        run: scripts/check-windows-installer.ps1 dist\proz-setup-windows-amd64.exe -Previous dist\proz-setup-previous.exe
 
       - name: Upload the installer
         uses: actions/upload-artifact@v4

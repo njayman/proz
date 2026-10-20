@@ -1,17 +1,23 @@
 # Installs the Windows installer silently for the current user, checks what
-# a user would see, installs it again over itself (an upgrade), uninstalls it
-# silently and checks nothing is left but the user's config folder.
+# a user would see, upgrades it with the tray running, uninstalls it silently
+# and checks nothing is left but the user's config folder.
 #
-#   pwsh scripts/check-windows-installer.ps1 dist\proz-setup-windows-amd64.exe
+#   pwsh scripts/check-windows-installer.ps1 dist\proz-setup-windows-amd64.exe [-Previous dist\older-setup.exe]
 #
+# With -Previous, that older installer goes first and the upgrade must change
+# `proz --version`; without it, the installer upgrades over itself.
 # Run it on a clean Windows machine (CI): it installs proz for real.
-param([Parameter(Mandatory)][string]$Installer)
+param([Parameter(Mandatory)][string]$Installer, [string]$Previous = $Installer)
 $ErrorActionPreference = 'Stop'
 
 function Fail($msg) { Write-Host "FAIL: $msg"; exit 1 }
-function Install { Start-Process -Wait -FilePath $Installer -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER' }
+function Run($file) {
+  $p = Start-Process -Wait -PassThru -FilePath $file -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
+  if ($p.ExitCode -ne 0) { Fail "$file exited with $($p.ExitCode)" }
+}
 function UserPath { [Environment]::GetEnvironmentVariable('Path', 'User') }
 function OnPath { @((UserPath) -split ';' | Where-Object { $_ -eq $app }).Count }
+function Version { $v = & $exe --version; if ($LASTEXITCODE -ne 0) { Fail 'proz --version' }; $v }
 
 $app = Join-Path $env:LOCALAPPDATA 'Programs\proz'
 $exe = Join-Path $app 'proz.exe'
@@ -19,10 +25,10 @@ $lnk = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\proz.lnk'
 $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{6F4A2B1E-8C3D-4E5F-9A70-2B1C3D4E5F60}_is1'
 $db = Join-Path $env:APPDATA 'proz\proz.db'
 
-Install
+Run $Previous
 if (-not (Test-Path $exe)) { Fail "no $exe" }
-& $exe --version
-if ($LASTEXITCODE -ne 0) { Fail 'proz --version' }
+$before = Version
+Write-Host $before
 if (-not (& $exe help gui | Select-String -SimpleMatch 'proz gui')) { Fail 'this proz has no gui command' }
 if (& $exe help gui | Select-String -SimpleMatch 'desktop builds only') { Fail 'proz gui is the plain build, not the desktop build' }
 if (-not (Test-Path $lnk)) { Fail "no Start menu entry at $lnk" }
@@ -34,17 +40,21 @@ if ((Get-ItemProperty $uninstallKey).DisplayName -ne 'proz') { Fail 'the uninsta
 
 # Leave the user something to keep: proz creates its database on first use.
 & $exe list --json | Out-Null
-if (-not (Test-Path $db)) { Fail 'proz did not create its config folder' }
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path $db)) { Fail 'proz did not create its config folder' }
 
-Install # an upgrade, over the running install
-& $exe --version | Out-Null
-if ($LASTEXITCODE -ne 0) { Fail 'proz --version after upgrading' }
+# Upgrade while the tray runs: the installer must close it to replace proz.exe.
+$tray = Start-Process -PassThru -FilePath $exe -ArgumentList 'tray'
+Start-Sleep -Seconds 3
+Run $Installer
+if (-not $tray.HasExited) { Stop-Process -Id $tray.Id; Fail 'upgrading left the old tray running' }
+$after = Version
+if ($Previous -ne $Installer -and $after -eq $before) { Fail "upgrading kept $before" }
 if ((OnPath) -ne 1) { Fail "upgrading changed the PATH entry: $(UserPath)" }
 
-$uninstaller = (Get-ItemProperty $uninstallKey).UninstallString.Trim('"')
-Start-Process -Wait -FilePath $uninstaller -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
-# The uninstaller hands off to a copy of itself and returns at once.
-for ($i = 0; $i -lt 60 -and (Test-Path $app); $i++) { Start-Sleep -Seconds 1 }
+Run (Get-ItemProperty $uninstallKey).UninstallString.Trim('"')
+# The uninstaller hands off to a copy of itself and returns at once; the
+# Settings entry goes last.
+for ($i = 0; $i -lt 60 -and ((Test-Path $uninstallKey) -or (Test-Path $app)); $i++) { Start-Sleep -Seconds 1 }
 if (Test-Path $app) { Fail "uninstalling left $app" }
 if (Test-Path $lnk) { Fail 'uninstalling left the Start menu entry' }
 if (Test-Path $uninstallKey) { Fail 'uninstalling left the Settings entry' }

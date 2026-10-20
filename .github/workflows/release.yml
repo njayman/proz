@@ -93,6 +93,9 @@ jobs:
       - name: Build the installer
         run: scripts/package-windows.ps1 -Version ($env:GITHUB_REF_NAME.TrimStart('v'))
 
+      - name: Install, upgrade and uninstall it before releasing it
+        run: scripts/check-windows-installer.ps1 dist\proz-setup-windows-amd64.exe
+
       - name: Upload the installer
         uses: actions/upload-artifact@v4
         with:
@@ -123,10 +126,6 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          # tag_name: ${{ github.ref_name }}
-          # run: |
-          #   ls
-          #   ls artifacts
           files: release/*
 
           draft: false

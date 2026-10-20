@@ -31,8 +31,6 @@ OutputBaseFilename=proz-setup-windows-amd64
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-; An upgrade closes a running proz (the tray) so it can replace proz.exe.
-CloseApplications=yes
 
 [Files]
 Source: "..\..\dist\windows\proz.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -42,24 +40,33 @@ Source: "..\..\dist\windows\proz.exe"; DestDir: "{app}"; Flags: ignoreversion
 ; opens a console window next to the launcher until `proz gui` hides its own.
 Name: "{autoprograms}\proz"; Filename: "{app}\proz.exe"; Parameters: "gui"; Comment: "Open your projects"
 
-[Registry]
-Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Check: NotOnPath(ExpandConstant('{app}'))
-
 [Code]
+// proz goes on the user's PATH once, and comes off it on uninstall.
 function PathWithout(Path, Dir: string): string;
+var
+  At: Integer;
 begin
   Result := ';' + Path + ';';
-  StringChangeEx(Result, ';' + Dir + ';', ';', True);
+  At := Pos(';' + Uppercase(Dir) + ';', Uppercase(Result));
+  if At > 0 then
+    Delete(Result, At, Length(Dir) + 1);
   Result := Copy(Result, 2, Length(Result) - 2);
 end;
 
-function NotOnPath(Dir: string): Boolean;
+procedure CurStepChanged(CurStep: TSetupStep);
 var
-  Path: string;
+  Path, Dir: string;
 begin
+  if CurStep <> ssPostInstall then
+    exit;
+  Dir := ExpandConstant('{app}');
   if not RegQueryStringValue(HKCU, 'Environment', 'Path', Path) then
     Path := '';
-  Result := Pos(';' + Uppercase(Dir) + ';', ';' + Uppercase(Path) + ';') = 0;
+  if PathWithout(Path, Dir) <> Path then
+    exit; // already on it
+  if Path <> '' then
+    Path := Path + ';';
+  RegWriteExpandStringValue(HKCU, 'Environment', 'Path', Path + Dir);
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
