@@ -19,6 +19,9 @@ var guiCmd = &cobra.Command{
 	},
 }
 
+// openLauncher is nil: the tray offers no Open proz without the GUI.
+var openLauncher func() error
+
 func init() {
 	rootCmd.AddCommand(guiCmd)
 }

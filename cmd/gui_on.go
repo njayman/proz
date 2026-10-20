@@ -4,6 +4,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 
 	"github.com/njayman/proz/core"
@@ -48,6 +49,16 @@ func guiLaunch(s *core.Store) gui.Launch {
 		}
 		return startDetached(cmd)
 	}
+}
+
+// openLauncher starts proz gui as its own process, so the tray never hosts
+// the window and stays free of the GUI toolkit's main loop.
+func openLauncher() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	return startDetached(exec.Command(exe, "gui"))
 }
 
 func init() {

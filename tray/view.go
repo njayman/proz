@@ -20,6 +20,7 @@ type View struct {
 	Tooltip string
 	Items   []Item
 	Loading bool // projects are still being read: the menu says so
+	Open    bool // the menu offers Open proz, the launcher
 }
 
 // Item is one quiet project in the menu.
@@ -78,10 +79,12 @@ func snoozeAction(d Deps, id int64, days int, show func()) func() {
 // view, one that says what went wrong, so the tray keeps its icon and menu.
 func snapshot(d Deps) (View, error) {
 	nudges, err := d.Nudges()
+	v := Render(nudges)
 	if err != nil {
-		return View{Tooltip: "proz: " + err.Error()}, err
+		v = View{Tooltip: "proz: " + err.Error()}
 	}
-	return Render(nudges), nil
+	v.Open = d.OpenLauncher != nil
+	return v, err
 }
 
 // Icon draws the tray icon: a ring, plus a red dot when something went

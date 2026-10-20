@@ -17,4 +17,8 @@ type Deps struct {
 	Snooze   func(id int64, days int) error
 	Drop     func(id int64) error
 	Log      func(error)
+
+	// OpenLauncher starts the launcher (proz gui) as its own process; nil
+	// when this binary was built without the GUI.
+	OpenLauncher func() error
 }
