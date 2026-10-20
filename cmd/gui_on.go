@@ -3,6 +3,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os/exec"
 
 	"github.com/njayman/proz/core"
@@ -34,8 +35,11 @@ func guiLaunch(s *core.Store) gui.Launch {
 		} else {
 			cmd, err = s.Launch(p, program, false)
 		}
-		if err != nil || cmd == nil {
+		if err != nil {
 			return err
+		}
+		if cmd == nil { // ponytail: ideas open setup once #93 lands
+			return fmt.Errorf("%s is an idea with no folder yet; run 'proz add' in its folder", p.Name)
 		}
 		return startDetached(cmd)
 	}
