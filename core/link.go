@@ -13,7 +13,7 @@ type Link struct {
 	Kind     string `json:"kind"`     // LinkTracker or LinkBrain
 	Provider string `json:"provider"` // such as github or notion
 	Ref      string `json:"ref"`      // the canonical web URL
-	Missing  bool   `json:"missing"`  // computed on every read, never stored
+	Missing  bool   `json:"missing"`  // a local link that is gone; a web link never is
 }
 
 const (
@@ -41,14 +41,16 @@ func presetProvider(host string) string {
 	return presetHosts[host]
 }
 
-// canonicalURL is ref with its scheme and host lowercased and any trailing
-// slash dropped, so one link pasted two ways is stored once.
+// canonicalURL is ref with its scheme and host lowercased, any trailing
+// slash and user name or password dropped, so one link pasted two ways is
+// stored once.
 func canonicalURL(ref string) (*url.URL, error) {
 	u, err := url.Parse(strings.TrimSpace(ref))
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return nil, fmt.Errorf("%q is not a web address (https://...)", ref)
 	}
 	u.Host = strings.ToLower(u.Host) // url.Parse lowercases the scheme
+	u.User = nil                     // a pasted user:token never reaches the store
 	u.Path = strings.TrimRight(u.Path, "/")
 	u.RawPath = strings.TrimRight(u.RawPath, "/")
 	return u, nil

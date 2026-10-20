@@ -119,6 +119,18 @@ func TestOneLinkOnSeveralProjectsAndSeveralOnOne(t *testing.T) {
 	}
 }
 
+func TestALinkNeverKeepsCredentials(t *testing.T) {
+	s := open(t, t.TempDir())
+	s.AddIdea("web")
+	web := projectNamed(t, s, "web")
+	if l, err := s.AddLink(web.ID, "https://me:ghp_secret@github.com/acme/web", ""); err != nil || l.Ref != "https://github.com/acme/web" {
+		t.Fatalf("got %+v, %v", l, err)
+	}
+	if got := links(t, s, "web"); len(got) != 1 || got[0].Ref != "https://github.com/acme/web" {
+		t.Fatalf("stored %+v", got)
+	}
+}
+
 func TestAnUnrecognizedHostFails(t *testing.T) {
 	s := open(t, t.TempDir())
 	s.AddIdea("web")

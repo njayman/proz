@@ -124,26 +124,6 @@ func folderTarget(dir string) (core.Project, error) {
 	return p, err
 }
 
-// changeProject applies change, then prints project id as 'list --json'
-// prints a project, or the message done gives.
-func changeProject(id int64, asJSON bool, change func(*core.Store) error, done func(core.Project) string) error {
-	var p core.Project
-	if err := withStore(func(s *core.Store) (err error) {
-		if err := change(s); err != nil {
-			return err
-		}
-		p, err = s.Project(id)
-		return err
-	}); err != nil {
-		return err
-	}
-	if asJSON {
-		return printJSON(p)
-	}
-	fmt.Println(done(p))
-	return nil
-}
-
 func init() {
 	folderCmd.PersistentFlags().StringVar(&folderProject, "project", "", "the project's name")
 	folderCmd.PersistentFlags().BoolVar(&folderJSONOut, "json", false, "print the project as JSON")
