@@ -5,8 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/njayman/proz/core"
 )
@@ -82,5 +84,69 @@ func mkdirs(t *testing.T, dirs ...string) {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// recorder puts a program on PATH that writes the folder it runs in to a
+// file, and returns its name and a func that waits for that folder.
+func recorder(t *testing.T) (name string, ranIn func() string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the recorder is a shell script")
+	}
+	bin, out := t.TempDir(), filepath.Join(t.TempDir(), "ran-in")
+	if err := os.WriteFile(filepath.Join(bin, "proz-rec"), []byte("#!/bin/sh\npwd -P > "+out+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return "proz-rec", func() string {
+		t.Helper()
+		for range 200 { // started detached: wait for it
+			if b, err := os.ReadFile(out); err == nil && len(b) > 0 {
+				os.Remove(out)
+				return strings.TrimSpace(string(b))
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatal("the program never ran")
+		return ""
+	}
+}
+
+func TestResumeOpensInTheChosenFolder(t *testing.T) {
+	dir := configDir(t)
+	main, docs, stray := filepath.Join(dir, "main"), filepath.Join(dir, "docs"), filepath.Join(dir, "stray")
+	mkdirs(t, main, docs, stray)
+	rec, ranIn := recorder(t)
+	run(t, "idea", "web")
+	run(t, "folder", "add", main, "--project", "web")
+	run(t, "folder", "add", docs, "--project", "web")
+	if err := withStore(func(s *core.Store) error {
+		p, err := s.ProjectNamed("web")
+		if err != nil {
+			return err
+		}
+		p.Programs = []string{rec}
+		return s.UpdateProject(p)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	real := func(p string) string { r, _ := filepath.EvalSymlinks(p); return r }
+
+	run(t, "resume", "web") // no terminal here: the main folder, no picker
+	if got := ranIn(); got != real(main) {
+		t.Fatalf("default: ran in %s, want %s", got, main)
+	}
+	run(t, "resume", "web", "--folder", docs)
+	if got := ranIn(); got != real(docs) {
+		t.Fatalf("--folder: ran in %s, want %s", got, docs)
+	}
+	run(t, "config", "terminal", rec)
+	run(t, "resume", "web", "--folder", docs, "--terminal")
+	if got := ranIn(); got != real(docs) {
+		t.Fatalf("--folder --terminal: ran in %s, want %s", got, docs)
+	}
+	if err := execute("resume", "web", "--folder", stray); err == nil || !strings.Contains(err.Error(), "not a folder or worktree of web") {
+		t.Fatalf("another folder: got %v", err)
 	}
 }

@@ -83,7 +83,7 @@ func TestWindowsTerminalSetting(t *testing.T) {
 	if got, want := launchArgs(t, s, p, "console.exe", false), []string{"wt.exe", "new-tab", "-d", esc, "console.exe", `a\;b`, esc}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
-	cmd, err := s.LaunchTerminal(p, false)
+	cmd, err := s.LaunchTerminal(p, "", false)
 	if err != nil || !reflect.DeepEqual(cmd.Args, []string{"wt.exe", "new-tab", "-d", esc}) {
 		t.Fatalf("terminal only: got %v, %v", cmd.Args, err)
 	}
@@ -97,7 +97,7 @@ func TestWindowsMissingTerminalSettingIsAnError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := s.Launch(p, "console.exe", false); err == nil || !strings.Contains(err.Error(), "proz config terminal") {
+	if _, err := s.Launch(p, "", "console.exe", false); err == nil || !strings.Contains(err.Error(), "proz config terminal") {
 		t.Fatalf("want an error naming the setting, got %v", err)
 	}
 }

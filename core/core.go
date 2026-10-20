@@ -384,21 +384,26 @@ func (s *Store) recordLaunch(p Project) error {
 }
 
 // Launch records a launch of p (activity, even with no program) and program
-// as recently used, and returns the command that opens
-// p with it; the caller wires stdio and runs it. No program means nothing to
-// launch, so it returns a nil command. When the caller has no terminal
-// attached, a terminal program is wrapped in the user's terminal emulator.
-func (s *Store) Launch(p Project, program string, attached bool) (*exec.Cmd, error) {
+// as recently used, and returns the command that opens p with it in folder:
+// one of p's folders or worktrees, or its main folder when folder is empty.
+// The caller wires stdio and runs it. No program means nothing to launch, so
+// it returns a nil command. When the caller has no terminal attached, a
+// terminal program is wrapped in the user's terminal emulator.
+func (s *Store) Launch(p Project, folder, program string, attached bool) (*exec.Cmd, error) {
+	dir, err := s.openIn(p, folder)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.recordLaunch(p); err != nil {
 		return nil, err
 	}
-	if program == "" || p.Path == "" { // an idea has no folder to open yet
+	if program == "" || dir == "" { // an idea has no folder to open yet
 		return nil, nil
 	}
 	if err := s.PushRecentProgram(program); err != nil {
 		return nil, err
 	}
-	args := append([]string{program}, append(slices.Clone(p.Arguments), p.Path)...)
+	args := append([]string{program}, append(slices.Clone(p.Arguments), dir)...)
 	newConsole := false
 	if !attached {
 		need, err := s.NeedsTerminal(program)
@@ -406,13 +411,13 @@ func (s *Store) Launch(p Project, program string, attached bool) (*exec.Cmd, err
 			return nil, err
 		}
 		if need.On {
-			if args, newConsole, err = s.runInTerminal(p.Path, args); err != nil {
+			if args, newConsole, err = s.runInTerminal(dir, args); err != nil {
 				return nil, fmt.Errorf("no terminal found to open %s in; %w", program, err)
 			}
 		}
 	}
 	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Dir = p.Path
+	cmd.Dir = dir
 	if newConsole {
 		setNewConsole(cmd)
 	}

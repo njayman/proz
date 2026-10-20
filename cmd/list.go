@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/njayman/proz/core"
 	"github.com/spf13/cobra"
 )
 
@@ -83,7 +84,7 @@ var listCmd = &cobra.Command{
 			return
 		}
 		if selected.Path == "" {
-			if err := launch(*selected, ""); err != nil { // opening an idea still counts as activity
+			if err := launch(*selected, "", ""); err != nil { // opening an idea still counts as activity
 				fmt.Fprintf(os.Stderr, "Warning: could not record the launch: %v\n", err)
 			}
 			fmt.Fprintf(os.Stderr, "'%s' is an idea with no folder yet. Run 'proz add' in its folder to attach one.\n", selected.Name)
@@ -105,7 +106,7 @@ var listCmd = &cobra.Command{
 
 		program := chooseProgram(*selected)
 
-		if err := launch(*selected, program); err != nil {
+		if err := launch(*selected, chooseFolder(*selected), program); err != nil {
 			fmt.Fprintf(os.Stderr, "Error launching %s: %v\n", program, err)
 		}
 
@@ -154,6 +155,31 @@ func applyListOptions(projects []Project) ([]Project, error) {
 	}
 
 	return projects, nil
+}
+
+// chooseFolder is where to open p: with several folders or worktrees and a
+// terminal, the one the user picks, starting at the one worked in last;
+// otherwise, or if they cancel, "" for the main folder.
+func chooseFolder(p Project) string {
+	var checkouts []core.Checkout
+	if len(p.Folders) == 0 || withStore(func(s *core.Store) (err error) { checkouts, err = s.Checkouts(p); return err }) != nil || len(checkouts) < 2 {
+		return ""
+	}
+	labels := make([]string, len(checkouts))
+	for i, c := range checkouts {
+		labels[i] = c.Path
+		switch {
+		case c.Main:
+			labels[i] += " (main folder)"
+		case c.Worktree:
+			labels[i] += " (worktree)"
+		}
+	}
+	choice, err := runSelectPicker("Choose a folder to open", labels)
+	if err != nil || choice < 0 {
+		return ""
+	}
+	return checkouts[choice].Path
 }
 
 // chooseProgram is the project's program, asking which when it has several.

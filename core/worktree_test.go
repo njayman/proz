@@ -127,3 +127,69 @@ func TestABareRepositoryIsNotAPlaceToRead(t *testing.T) {
 		}
 	}
 }
+
+func TestLaunchOpensInTheChosenFolderOrWorktreeAndRefusesOthers(t *testing.T) {
+	s := open(t, t.TempDir())
+	repo, commit := gitRepo(t)
+	commit(t0)
+	wt := worktree(t, repo, "spike")
+	docs := t.TempDir()
+	if err := s.AddProject(Project{Name: "app", Path: repo}); err != nil {
+		t.Fatal(err)
+	}
+	app := projectNamed(t, s, "app")
+	if err := s.AddFolder(app.ID, docs); err != nil {
+		t.Fatal(err)
+	}
+	app = projectNamed(t, s, "app")
+
+	for folder, want := range map[string]string{"": repo, docs: docs, wt: wt} {
+		cmd, err := s.Launch(app, folder, "code", true)
+		if err != nil || cmd.Dir != want || cmd.Args[len(cmd.Args)-1] != want {
+			t.Fatalf("folder %q: got %v, %v; want %s", folder, cmd, err, want)
+		}
+		if cmd, err = s.LaunchTerminal(app, folder, true); err != nil || cmd.Dir != want {
+			t.Fatalf("terminal in %q: got %v, %v", folder, cmd, err)
+		}
+	}
+	if _, err := s.Launch(app, t.TempDir(), "code", true); err == nil || !strings.Contains(err.Error(), "not a folder or worktree of app") {
+		t.Fatalf("another folder: got %v", err)
+	}
+}
+
+func TestCheckoutsListFoldersAndWorktreesMostRecentlyActiveFirst(t *testing.T) {
+	c := &clock{t0}
+	s := openAt(t, c)
+	repo, commit := gitRepo(t)
+	commit(t0)
+	wt := worktree(t, repo, "spike")
+	docs := t.TempDir()
+	if err := s.AddProject(Project{Name: "app", Path: repo}); err != nil {
+		t.Fatal(err)
+	}
+	app := projectNamed(t, s, "app")
+	if err := s.AddFolder(app.ID, docs); err != nil {
+		t.Fatal(err)
+	}
+	touch(t, docs, "plan.md", t0.Add(2*day))
+	touch(t, wt, "spike.go", t0.Add(5*day))
+
+	c.t = t0.Add(20 * day)
+	got, err := s.Checkouts(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Checkout{
+		{Path: wt, Worktree: true, LastActive: t0.Add(5 * day)},
+		{Path: docs, LastActive: t0.Add(2 * day)},
+		{Path: repo, Main: true, LastActive: t0},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %+v", got)
+	}
+	for i := range want {
+		if resolve(got[i].Path) != resolve(want[i].Path) || got[i].Main != want[i].Main || got[i].Worktree != want[i].Worktree || !got[i].LastActive.Equal(want[i].LastActive) {
+			t.Fatalf("%d: got %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}

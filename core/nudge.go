@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -163,11 +162,9 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 	}
 
 	now := s.now()
-	ignore := []string{resolve(s.dir)} // proz's own writes are not the user's activity
-	if brain, err := s.BrainPath(); err != nil {
+	ignore, err := s.ignored()
+	if err != nil {
 		return nil, err
-	} else if brain != "" {
-		ignore = append(ignore, resolve(brain))
 	}
 	prompts, err := s.ModuleOn(ModulePrompts)
 	if err != nil {
@@ -197,55 +194,20 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), gitLimit)
 			defer cancel()
 			x := &sig[i]
-			var gitActive time.Time // when the folder x.g came from was last active
-			// every present folder, and the same place in each of its worktrees
-			type place struct{ path, real string } // as written, and resolved to compare
-			var places []place
-			add := func(path string) {
-				p := place{path, resolve(path)}
-				if !slices.ContainsFunc(places, func(q place) bool { return q.real == p.real }) {
-					places = append(places, p)
-				}
-			}
-			for _, f := range r.st.Folders {
-				if f.Missing {
-					x.missing = append(x.missing, f.Path)
-					continue
-				}
-				add(f.Path)
-				for _, wt := range otherCheckouts(ctx, f.Path) {
-					if !missing(wt) {
-						add(wt)
-					}
-				}
-			}
+			var gitActive time.Time // when the place x.g came from was last active
+			places, gone := placesOf(ctx, r.st.Folders)
+			x.missing = gone
 			for _, pl := range places {
-				// a place of the project nested in this one counts its own files
-				skip := slices.Clone(ignore)
-				for _, other := range places {
-					if other.real != pl.real && within(other.real, pl.real) {
-						skip = append(skip, other.real)
-					}
+				p := readPlace(ctx, pl, places, now, ignore)
+				if p.hasGit && (!x.hasGit || p.active.After(gitActive)) {
+					x.g, x.hasGit, gitActive = p.g, true, p.active
 				}
-				g, hasGit := readGit(ctx, pl.path)
-				work := readWork(ctx, pl.path, now, skip)
-				cl, hasCl := readClaude(pl.path)
-				active := work.when
-				if hasGit && g.when.After(active) {
-					active = g.when
+				if p.work.when.After(x.work.when) {
+					x.work.when = p.work.when
 				}
-				if hasCl && cl.when.After(active) {
-					active = cl.when
-				}
-				if hasGit && (!x.hasGit || active.After(gitActive)) {
-					x.g, x.hasGit, gitActive = g, true, active
-				}
-				if work.when.After(x.work.when) {
-					x.work.when = work.when
-				}
-				x.work.uncommitted += work.uncommitted
-				if hasCl && (!x.hasCl || cl.when.After(x.cl.when)) {
-					x.cl, x.hasCl = cl, true
+				x.work.uncommitted += p.work.uncommitted
+				if p.hasCl && (!x.hasCl || p.cl.when.After(x.cl.when)) {
+					x.cl, x.hasCl = p.cl, true
 				}
 			}
 			x.slow = ctx.Err() != nil
