@@ -631,6 +631,38 @@ func TestCtrlCommaOrSettingsOpensSettingsInPlaceAndEscOrBackReturnsHome(t *testi
 	}
 }
 
+func TestAnOlderStatusReadNeverOverwritesANewerOne(t *testing.T) {
+	gate := make(chan struct{})
+	var mu sync.Mutex
+	first := true
+	was := statusesOf
+	statusesOf = func(s *core.Store) ([]core.Status, error) {
+		mu.Lock()
+		slow := first
+		first = false
+		mu.Unlock()
+		sts, err := s.Statuses()
+		if slow { // read before the snooze, landing after it
+			<-gate
+		}
+		return sts, err
+	}
+	t.Cleanup(func() { statusesOf = was })
+	now := t0
+	w, _, _ := launcherOver(t, nil, &now, func(s *core.Store) {
+		must(t, s.AddProject(core.Project{Name: "web", Path: t.TempDir()}))
+		now = t0.Add(30 * 24 * time.Hour)
+	})
+	time.Sleep(50 * time.Millisecond) // the first read is in
+	test.Tap(button(t, w, "Snooze a week"))
+	eventually(t, w, "SNOOZED")
+	close(gate)
+	time.Sleep(100 * time.Millisecond)
+	if says(w, "GONE QUIET") {
+		t.Fatalf("the read from before the snooze won: %q", texts(w))
+	}
+}
+
 // settingsOver opens the settings view over a temp store that setup fills,
 // returning the window and the store.
 func settingsOver(t *testing.T, setup func(*core.Store)) (fyne.Window, *core.Store) {
@@ -721,7 +753,7 @@ func TestFeaturesSwitchModulesAtOnce(t *testing.T) {
 // weekly is the weekly email menu on screen.
 func weekly(t *testing.T, w fyne.Window) *escSelect {
 	t.Helper()
-	return find(t, w, func(*escSelect) bool { return true })
+	return find(t, w, func(s *escSelect) bool { return s.Options[0] == "Off" })
 }
 
 var smtp = core.SMTP{Host: "smtp.example.com", Port: 587, From: "me@example.com", To: "me@example.com"}
@@ -758,7 +790,7 @@ func TestAWeeklyEmailDayWithNoMailServerSaysSoAndStaysOff(t *testing.T) {
 	if d, _ := s.DigestDay(); d != time.Monday || on(t, s, core.ModuleEmail) || weekly(t, w).Selected != "Off" {
 		t.Fatalf("saved %v, email %v, shown %q", d, on(t, s, core.ModuleEmail), weekly(t, w).Selected)
 	}
-	if !slices.ContainsFunc(texts(w), func(s string) bool { return strings.Contains(s, "SMTP") }) {
+	if !says(w, "fill in the mail server") {
 		t.Fatalf("says why: %q", texts(w))
 	}
 }
@@ -769,7 +801,7 @@ func TestTheMailServerSavesOnceItIsComplete(t *testing.T) {
 		t.Fatalf("a new mail server starts on port 587: %q", got)
 	}
 	test.Type(entry(t, w, "smtp.example.com"), "smtp.example.com")
-	if _, ok, _ := s.SMTP(); ok || !slices.ContainsFunc(texts(w), func(s string) bool { return strings.Contains(s, "Mail server not saved") }) {
+	if _, ok, _ := s.SMTP(); ok || !slices.ContainsFunc(texts(w), func(s string) bool { return strings.Contains(s, "mail server not saved") }) {
 		t.Fatalf("saved without addresses, or did not say: %v, %q", ok, texts(w))
 	}
 	test.Type(entry(t, w, "Sender address"), "me@example.com")
@@ -795,6 +827,55 @@ func TestASavedMailServerShowsAsSaved(t *testing.T) {
 	}
 	if got := entry(t, w, "Your address").Text; got != smtp.To {
 		t.Fatalf("to: %q", got)
+	}
+}
+
+// says reports whether some text on screen contains want.
+func says(w fyne.Window, want string) bool {
+	return slices.ContainsFunc(texts(w), func(s string) bool { return strings.Contains(s, want) })
+}
+
+func TestTheFirstMailServerSwitchesEmailOnAsTheCLIDoes(t *testing.T) {
+	w, s := settingsOver(t, func(*core.Store) {})
+	test.Type(entry(t, w, "smtp.example.com"), "smtp.example.com")
+	test.Type(entry(t, w, "Sender address"), "me@example.com")
+	test.Type(entry(t, w, "Your address"), "me@example.com")
+	if !on(t, s, core.ModuleEmail) || !check(t, w, "Email digest").Checked || weekly(t, w).Selected != "Monday" {
+		t.Fatalf("email %v, shown %v, %q", on(t, s, core.ModuleEmail), check(t, w, "Email digest").Checked, weekly(t, w).Selected)
+	}
+}
+
+func TestASavedPasswordNeverGoesToANewServer(t *testing.T) {
+	saved := smtp
+	saved.Password = "s3cret"
+	w, s := settingsOver(t, func(s *core.Store) { must(t, s.SetSMTP(saved)) })
+	if pw := entry(t, w, "Saved; type to change").Text; pw != "" {
+		t.Fatalf("the password box shows the saved password: %q", pw)
+	}
+	entry(t, w, "smtp.example.com").SetText("evil.example.com")
+	if got, _, _ := s.SMTP(); got.Host != smtp.Host || !says(w, "password again") {
+		t.Fatalf("a new host with the old password: saved %q, screen %q", got.Host, texts(w))
+	}
+	test.Type(entry(t, w, "Saved; type to change"), "other")
+	if got, _, _ := s.SMTP(); got.Host != "evil.example.com" || got.Password != "other" {
+		t.Fatalf("a new host with its password typed: %+v", got)
+	}
+}
+
+func TestAProblemStaysShownUntilItsOwnSettingIsFixed(t *testing.T) {
+	w, _ := settingsOver(t, func(*core.Store) {})
+	test.Type(entry(t, w, "smtp.example.com"), "smtp.example.com")
+	test.Tap(check(t, w, "Notifications"))
+	if !says(w, "mail server not saved") {
+		t.Fatalf("another setting saving hides the mail server's problem: %q", texts(w))
+	}
+}
+
+func TestEmailWithNoMailServerPointsAtTheFieldsNotTheCLI(t *testing.T) {
+	w, _ := settingsOver(t, func(*core.Store) {})
+	test.Tap(check(t, w, "Email digest"))
+	if !says(w, "fill in the mail server") || says(w, "proz config") {
+		t.Fatalf("%q", texts(w))
 	}
 }
 

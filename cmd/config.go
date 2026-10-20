@@ -41,8 +41,8 @@ var staleDaysCmd = &cobra.Command{
 				if staleProject != "" && err == nil && days == 0 {
 					return s.SetProjectStaleThreshold(p.ID, 0)
 				}
-				if err != nil || days < 1 || days > 36500 {
-					return fmt.Errorf("days must be a whole number from 1 to 36500, got %q", args[0])
+				if err != nil || days < 1 || days > core.MaxDays {
+					return fmt.Errorf("days must be a whole number from 1 to %d, got %q", core.MaxDays, args[0])
 				}
 				d := time.Duration(days) * 24 * time.Hour
 				if staleProject != "" {

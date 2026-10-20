@@ -81,8 +81,8 @@ var snoozeCmd = &cobra.Command{
 		}
 		if n > 0 {
 			if d, err := strconv.Atoi(args[n-1]); err == nil {
-				if d < 1 || d > 36500 {
-					return fmt.Errorf("days must be from 1 to 36500, got %d", d)
+				if d < 1 || d > core.MaxDays {
+					return fmt.Errorf("days must be from 1 to %d, got %d", core.MaxDays, d)
 				}
 				days, args = d, args[:n-1]
 			}

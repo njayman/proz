@@ -146,6 +146,60 @@ func TestSMTPConfigIsOwnerOnlyAndEnablesEmail(t *testing.T) {
 	}
 }
 
+func TestSaveSMTPSwitchesEmailOnOnceAndKeepsThePasswordOnItsServer(t *testing.T) {
+	s := open(t, t.TempDir())
+	pw := "hunter2"
+	c := SMTP{Host: "smtp.example.com", Port: DefaultSMTPPort, Username: "me", From: "me@example.com", To: "me@example.com"}
+	if err := s.SaveSMTP(c, &pw); err != nil {
+		t.Fatal(err)
+	}
+	if on, _ := s.ModuleOn(ModuleEmail); !on {
+		t.Fatal("the first mail server switches email on")
+	}
+	if err := s.SetModule(ModuleEmail, false); err != nil {
+		t.Fatal(err)
+	}
+	c.To = "other@example.com"
+	if err := s.SaveSMTP(c, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, _ := s.SMTP(); got.Password != pw || got.To != c.To {
+		t.Fatalf("an edit keeps the saved password: %+v", got)
+	}
+	if on, _ := s.ModuleOn(ModuleEmail); on {
+		t.Fatal("an edit keeps email as it was")
+	}
+	for _, moved := range []SMTP{{Host: "evil.example.com"}, {Username: "evil"}} {
+		m := c
+		if moved.Host != "" {
+			m.Host = moved.Host
+		} else {
+			m.Username = moved.Username
+		}
+		if err := s.SaveSMTP(m, nil); !errors.Is(err, ErrPasswordAgain) {
+			t.Fatalf("%+v with the saved password: %v", moved, err)
+		}
+	}
+	if got, _, _ := s.SMTP(); got.Host != c.Host || got.Username != c.Username {
+		t.Fatalf("a refused save changes nothing: %+v", got)
+	}
+	other := "other"
+	c.Host = "new.example.com"
+	if err := s.SaveSMTP(c, &other); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, _ := s.SMTP(); got.Host != c.Host || got.Password != other {
+		t.Fatalf("a new host with its password: %+v", got)
+	}
+}
+
+func TestEmailWithNoSMTPSaysSo(t *testing.T) {
+	s := open(t, t.TempDir())
+	if err := s.SetModule(ModuleEmail, true); !errors.Is(err, ErrNoSMTP) {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func TestFirstDigestWaitsForTheDigestDay(t *testing.T) {
 	c := &clock{t0}
 	s := openAt(t, c)

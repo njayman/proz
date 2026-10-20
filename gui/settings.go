@@ -3,8 +3,10 @@ package gui
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -28,14 +30,23 @@ func settings(s *core.Store, back func()) fyne.CanvasObject {
 	problem.Wrapping = fyne.TextWrapWord
 	problem.Importance = widget.DangerImportance
 	problem.Hide()
-	// applied shows err, or clears the last problem.
-	applied := func(err error) {
-		if err == nil {
-			problem.Hide()
-			return
+	problems := map[string]string{} // by the part of the view that has it
+	// applied shows err as part's problem, or clears part's last one.
+	applied := func(part string, err error) {
+		delete(problems, part)
+		if errors.Is(err, core.ErrNoSMTP) {
+			err = errors.New("fill in the mail server under Email first")
 		}
-		problem.SetText(err.Error())
-		problem.Show()
+		if err != nil {
+			problems[part] = err.Error()
+		}
+		var lines []string
+		for _, k := range slices.Sorted(maps.Keys(problems)) {
+			lines = append(lines, problems[k])
+		}
+		problem.SetText(strings.Join(lines, "\n"))
+		problem.Hidden = len(lines) == 0
+		problem.Refresh()
 	}
 	group := func(title string) *widget.Label {
 		return widget.NewLabelWithStyle(title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
@@ -45,15 +56,15 @@ func settings(s *core.Store, back func()) fyne.CanvasObject {
 	if d, err := s.StaleThreshold(); err == nil {
 		quiet.SetText(strconv.Itoa(int(d / day)))
 	} else {
-		applied(err)
+		applied("quiet", err)
 	}
 	quiet.OnChanged = func(v string) {
 		n, err := strconv.Atoi(v)
-		if err != nil || n < 1 || n > 36500 {
-			applied(errQuietDays)
+		if err != nil || n < 1 || n > core.MaxDays {
+			applied("quiet", errQuietDays)
 			return
 		}
-		applied(s.SetStaleThreshold(time.Duration(n) * day))
+		applied("quiet", s.SetStaleThreshold(time.Duration(n)*day))
 	}
 
 	features := container.NewVBox()
@@ -65,7 +76,7 @@ func settings(s *core.Store, back func()) fyne.CanvasObject {
 		for m, c := range checks {
 			v, err := s.ModuleOn(m)
 			if err != nil {
-				applied(err)
+				applied("read", err)
 			}
 			c.Checked = v
 			c.Refresh()
@@ -74,7 +85,7 @@ func settings(s *core.Store, back func()) fyne.CanvasObject {
 		if checks[core.ModuleEmail].Checked {
 			d, err := s.DigestDay()
 			if err != nil {
-				applied(err)
+				applied("read", err)
 			}
 			weekly.Selected = d.String()
 		}
@@ -99,7 +110,7 @@ func settings(s *core.Store, back func()) fyne.CanvasObject {
 			if err == nil {
 				err = s.SetModule(f.m, v)
 			}
-			applied(err)
+			applied("features", err)
 			sync()
 		}
 		checks[f.m] = c
@@ -110,34 +121,42 @@ func settings(s *core.Store, back func()) fyne.CanvasObject {
 		if i := slices.Index(weekdays, v); err == nil && i >= 0 {
 			err = s.SetDigestDay(time.Weekday((i + 1) % 7))
 		}
-		applied(err)
+		applied("features", err)
 		sync()
 	}
 	sync()
 
-	host, port, user := newEscEntry("smtp.example.com", back), newEscEntry("587", back), newEscEntry("Only if it needs one", back)
+	host, port, user := newEscEntry("smtp.example.com", back), newEscEntry(strconv.Itoa(core.DefaultSMTPPort), back), newEscEntry("Only if it needs one", back)
 	pass, from, to := newEscEntry("Password", back), newEscEntry("Sender address", back), newEscEntry("Your address", back)
 	pass.Password = true
 	c, ok, err := s.SMTP()
-	applied(err)
+	applied("read", err)
 	if !ok {
-		c.Port = 587
+		c.Port = core.DefaultSMTPPort
+	}
+	if c.Password != "" { // never shown: an empty box keeps it
+		pass.PlaceHolder = "Saved; type to change"
 	}
 	host.SetText(c.Host)
 	port.SetText(strconv.Itoa(c.Port))
 	user.SetText(c.Username)
-	pass.SetText(c.Password)
 	from.SetText(c.From)
 	to.SetText(c.To)
+	// ponytail: saves on every key, so a half-typed server is named "not saved" until it is whole
 	mail := func(string) {
+		var pw *string
+		if p := pass.Text; p != "" {
+			pw = &p
+		}
 		p, err := strconv.Atoi(port.Text)
 		if err == nil {
-			err = s.SetSMTP(core.SMTP{Host: host.Text, Port: p, Username: user.Text, Password: pass.Text, From: from.Text, To: to.Text})
+			err = s.SaveSMTP(core.SMTP{Host: host.Text, Port: p, Username: user.Text, From: from.Text, To: to.Text}, pw)
 		}
 		if err != nil {
-			err = fmt.Errorf("Mail server not saved: %w", err)
+			err = fmt.Errorf("mail server not saved: %w", err)
 		}
-		applied(err)
+		applied("mail", err)
+		sync() // the first mail server switches email on
 	}
 	for _, e := range []*escEntry{host, port, user, pass, from, to} {
 		e.OnChanged = mail
@@ -147,9 +166,9 @@ func settings(s *core.Store, back func()) fyne.CanvasObject {
 	if t, err := s.Terminal(); err == nil {
 		terminal.SetText(t)
 	} else {
-		applied(err)
+		applied("terminal", err)
 	}
-	terminal.OnChanged = func(t string) { applied(s.SetTerminal(t)) }
+	terminal.OnChanged = func(t string) { applied("terminal", s.SetTerminal(t)) }
 
 	return page("Settings", back, problem, container.NewVBox(
 		group("Reminders"),
@@ -176,10 +195,11 @@ func settings(s *core.Store, back func()) fyne.CanvasObject {
 // weekdays are the days the weekly email can go out, Monday first.
 var weekdays = []string{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}
 
-var errQuietDays = errors.New("quiet after: whole days from 1 to 36500")
+var errQuietDays = fmt.Errorf("quiet after: whole days from 1 to %d", core.MaxDays)
 
 // page is a view that replaces home: a back arrow and title over body,
 // which scrolls rather than grow the window, over bottom, which stays.
+// ponytail: Esc does nothing on a button reached by Tab; Space on Back goes back anyway
 func page(title string, back func(), bottom, body fyne.CanvasObject) fyne.CanvasObject {
 	top := container.NewBorder(nil, nil, widget.NewButtonWithIcon("Back", theme.NavigateBackIcon(), back), nil, truncated(title, fyne.TextStyle{Bold: true}))
 	return container.NewBorder(top, container.NewPadded(bottom), nil, nil, container.NewVScroll(container.NewPadded(body)))

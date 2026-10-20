@@ -192,7 +192,7 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 	showSettings := func() { show(settings(s, goHome)) }
 	ctrl[fyne.KeyComma] = showSettings
 	ctrl[fyne.KeyN] = func() {} // ponytail: Ctrl+N does nothing until setup (#93) exists
-	for k, do := range ctrl { // for views without the filter box
+	for k, do := range ctrl {   // for views without the filter box
 		w.Canvas().AddShortcut(&desktop.CustomShortcut{KeyName: k, Modifier: fyne.KeyModifierShortcutDefault}, func(fyne.Shortcut) { do() })
 	}
 
@@ -205,10 +205,16 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 		}
 		w.Close()
 	}
+	loads := 0 // reads started, so an older one landing late is dropped
 	load = func() {
+		loads++
+		this := loads
 		go func() {
 			sts, err := statusesOf(s)
 			fyne.Do(func() {
+				if this != loads {
+					return
+				}
 				if err != nil {
 					dialog.ShowError(err, w)
 					return
