@@ -22,6 +22,30 @@ func linksJSON(t *testing.T, out string) []core.Link {
 	return p.Links
 }
 
+func TestLinkToAToolProzDoesNotRecognize(t *testing.T) {
+	configDir(t)
+	run(t, "idea", "web")
+	err := execute("link", "https://tasks.example.com/web", "web")
+	if err == nil {
+		t.Fatal("an unknown host with no --provider must fail")
+	}
+	for _, choice := range []string{"--provider", "github", "linear", "jira", "trello", "asana", "todoist", "notion", "brainmd", "other", "--kind", "tracker", "brain"} {
+		if !strings.Contains(err.Error(), choice) {
+			t.Errorf("error %q does not name %s", err, choice)
+		}
+	}
+	if out := run(t, "link", "https://tasks.example.com/web", "web", "--provider", "other", "--kind", "tracker"); out != "Linked web to tasks.example.com, as a tracker: https://tasks.example.com/web\n" {
+		t.Fatalf("other is shown by its domain: %q", out)
+	}
+	got := linksJSON(t, run(t, "link", "https://tasks.example.com/api", "web", "--json"))
+	if want := (core.Link{Kind: "tracker", Provider: "web", Ref: "https://tasks.example.com/api"}); len(got) != 2 || got[1] != want {
+		t.Fatalf("the host is remembered: %+v", got)
+	}
+	if got := linksJSON(t, run(t, "link", "acme/web#3", "web", "--json")); got[2].Ref != "https://github.com/acme/web/issues/3" {
+		t.Fatalf("short form: %+v", got)
+	}
+}
+
 // Agents parse the links array on every project; field names are a contract.
 func TestLinkAndUnlinkAKnownTool(t *testing.T) {
 	dir := configDir(t)

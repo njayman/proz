@@ -98,6 +98,13 @@ var migrations = []string{
 		added_at INTEGER NOT NULL
 	)`,
 	`CREATE UNIQUE INDEX links_by_project ON links (workspace_id, project_id, ref)`,
+	`CREATE TABLE hosts (
+		workspace_id TEXT NOT NULL DEFAULT 'default',
+		host TEXT NOT NULL,
+		provider TEXT NOT NULL,
+		kind TEXT NOT NULL,
+		PRIMARY KEY (workspace_id, host)
+	)`, // what the user said a host is, the first time proz could not tell
 }
 
 // Open opens (creating if needed) the store in dir. now is the clock every

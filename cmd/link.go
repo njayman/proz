@@ -1,15 +1,19 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/njayman/proz/core"
 	"github.com/spf13/cobra"
 )
 
 var (
-	linkKind    string
-	linkJSONOut bool
+	linkProvider string
+	linkKind     string
+	linkJSONOut  bool
 )
 
 var linkCmd = &cobra.Command{
@@ -18,9 +22,12 @@ var linkCmd = &cobra.Command{
 	Long: "Link a project to where its tasks or notes live, such as its GitHub\n" +
 		"repository or a Notion page, by pasting the URL. proz recognizes GitHub,\n" +
 		"Linear, Jira, Trello, Asana and Todoist as trackers and Notion as a brain;\n" +
-		"--kind tracker makes a Notion link a tracker. proz never reads through a\n" +
-		"link; agents do. With no project name, uses the project containing the\n" +
-		"current folder.",
+		"--kind tracker makes a Notion link a tracker. For any other address, say\n" +
+		"what it is once with --provider and --kind; proz remembers it for that\n" +
+		"host. owner/repo and owner/repo#123 mean GitHub, and an issue key such as\n" +
+		"ENG-123 works once one Linear workspace or Jira site is linked. proz never\n" +
+		"reads through a link; agents do. With no project name, uses the project\n" +
+		"containing the current folder.",
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		p, err := resolveProject(args[1:])
@@ -28,11 +35,28 @@ var linkCmd = &cobra.Command{
 			return err
 		}
 		var l core.Link
-		return changeProject(p.ID, linkJSONOut, func(s *core.Store) (err error) { l, err = s.AddLink(p.ID, args[0], linkKind); return err },
-			func(after core.Project) string {
-				return fmt.Sprintf("Linked %s to %s, as a %s: %s", after.Name, l.Provider, l.Kind, l.Ref)
-			})
+		err = changeProject(p.ID, linkJSONOut, func(s *core.Store) (err error) {
+			l, err = s.AddLink(p.ID, args[0], linkProvider, linkKind)
+			return err
+		}, func(after core.Project) string {
+			return fmt.Sprintf("Linked %s to %s, as a %s: %s", after.Name, linkName(l), l.Kind, l.Ref)
+		})
+		var unknown *core.UnknownHostError
+		if errors.As(err, &unknown) {
+			return fmt.Errorf("proz does not recognize %s; say which tool it is with --provider %s and --kind %s|%s",
+				unknown.Host, strings.Join(core.Providers(), "|"), core.LinkTracker, core.LinkBrain)
+		}
+		return err
 	},
+}
+
+// linkName is how a person tells l apart: its provider, or for a web link
+// (provider other) its domain.
+func linkName(l core.Link) string {
+	if u, err := url.Parse(l.Ref); err == nil && l.Provider == "web" {
+		return u.Host
+	}
+	return l.Provider
 }
 
 var unlinkCmd = &cobra.Command{
@@ -52,6 +76,7 @@ var unlinkCmd = &cobra.Command{
 }
 
 func init() {
+	linkCmd.Flags().StringVar(&linkProvider, "provider", "", "which tool it is, for an address proz does not recognize: "+strings.Join(core.Providers(), ", "))
 	linkCmd.Flags().StringVar(&linkKind, "kind", "", "tracker (where its tasks live) or brain (where its notes live); defaults to the tool's usual kind")
 	for _, c := range []*cobra.Command{linkCmd, unlinkCmd} {
 		c.Flags().BoolVar(&linkJSONOut, "json", false, "print the project as JSON")
