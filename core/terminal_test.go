@@ -454,3 +454,32 @@ func TestTerminalOnlyWithNoTerminalNamesTheSetting(t *testing.T) {
 		t.Fatalf("want an error naming the setting, got %v", err)
 	}
 }
+
+func TestAnAgentStartsInTheFolderWithNoArgumentsInTheUsersTerminal(t *testing.T) {
+	fakePath(t, "alacritty", "claude")
+	t.Setenv("TERMINAL", "alacritty")
+	c := &clock{t0}
+	s := openAt(t, c)
+	p := project(t, s)
+	p.Arguments = []string{"--new-window"} // the project's program's, never the agent's
+	c.t = t0.Add(5 * day)
+
+	cmd, err := s.LaunchAgent(p, "claude", false)
+	if want := []string{"alacritty", "--working-directory", p.Path, "-e", "claude"}; err != nil || !reflect.DeepEqual(cmd.Args, want) || cmd.Dir != p.Path {
+		t.Fatalf("got %v in %q, %v; want %v", cmd.Args, cmd.Dir, err, want)
+	}
+	if st, _ := s.Status(p.ID); !st.LastActivity.Equal(t0.Add(5 * day)) {
+		t.Fatalf("want the launch recorded, got %v", st.LastActivity)
+	}
+	if cmd, err := s.LaunchAgent(p, "claude", true); err != nil || !reflect.DeepEqual(cmd.Args, []string{"claude"}) {
+		t.Fatalf("in a terminal: got %v, %v", cmd.Args, err)
+	}
+}
+
+func TestAgentsOnPathAreTheKnownAgentCLIsFoundInOrder(t *testing.T) {
+	fakePath(t, "aider", "claude")
+	want := []Agent{{"Claude Code", "claude"}, {"aider", "aider"}}
+	if got := AgentsOnPath(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+}

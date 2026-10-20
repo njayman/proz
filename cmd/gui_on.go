@@ -16,8 +16,9 @@ var guiCmd = &cobra.Command{
 	Short: "Open the launcher window",
 	Long: "Open a window listing your projects. Type to filter, Up and Down to\n" +
 		"move. Enter opens the selected one with its first program, or a\n" +
-		"terminal in its folder when it has none, and the window closes. Esc\n" +
-		"clears the filter, then closes the window.",
+		"terminal in its folder when it has none, and the window closes; More\n" +
+		"ways to open offers its other programs, a terminal and agent CLIs.\n" +
+		"Esc clears the filter, then closes the window.",
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return withStore(func(s *core.Store) error { return gui.Run(s, guiLaunch(s)) })
@@ -27,14 +28,17 @@ var guiCmd = &cobra.Command{
 // guiLaunch opens projects from the launcher, where there is no terminal:
 // the program starts on its own, terminal programs in the user's terminal.
 func guiLaunch(s *core.Store) gui.Launch {
-	return func(p core.Project, folder, program string) error {
+	return func(p core.Project, folder string, way gui.Way) error {
 		p.Path = folder
 		var cmd *exec.Cmd
 		var err error
-		if program == "" {
+		switch {
+		case way.Agent:
+			cmd, err = s.LaunchAgent(p, way.Program, false)
+		case way.Program == "":
 			cmd, err = s.LaunchTerminal(p, false)
-		} else {
-			cmd, err = s.Launch(p, program, false)
+		default:
+			cmd, err = s.Launch(p, way.Program, false)
 		}
 		if err != nil {
 			return err

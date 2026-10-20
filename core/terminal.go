@@ -172,14 +172,51 @@ func runForm(t, dir string, exact bool) []string {
 // else a new window of the user's terminal emulator. An idea with no folder
 // returns a nil command.
 func (s *Store) LaunchTerminal(p Project, attached bool) (*exec.Cmd, error) {
+	return s.launchInFolder(p, nil, attached)
+}
+
+// Agent is a coding agent CLI proz can start in a project's folder.
+type Agent struct {
+	Name    string // as people call it, such as "Claude Code"
+	Program string
+}
+
+// KnownAgents are the agent CLIs the launcher offers when they are on PATH.
+var KnownAgents = []Agent{{"Claude Code", "claude"}, {"Codex", "codex"}, {"Gemini CLI", "gemini"}, {"opencode", "opencode"}, {"aider", "aider"}}
+
+// AgentsOnPath are the known agents installed here, in KnownAgents' order.
+func AgentsOnPath() []Agent {
+	var out []Agent
+	for _, a := range KnownAgents {
+		if _, err := exec.LookPath(a.Program); err == nil {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// LaunchAgent records a launch of p and returns the command that starts the
+// agent program in p's folder with no arguments (the project's arguments
+// belong to its own programs), in the user's terminal unless one is attached.
+func (s *Store) LaunchAgent(p Project, agent string, attached bool) (*exec.Cmd, error) {
+	return s.launchInFolder(p, []string{agent}, attached)
+}
+
+// launchInFolder records a launch of p and returns the command that runs
+// program in p's folder, or the user's shell when program is empty, wrapped
+// in the user's terminal unless one is attached. An idea opens nothing.
+func (s *Store) launchInFolder(p Project, program []string, attached bool) (*exec.Cmd, error) {
 	if err := s.recordLaunch(p); err != nil || p.Path == "" {
 		return nil, err
 	}
-	args := []string{cmp.Or(os.Getenv("SHELL"), os.Getenv("ComSpec"), "/bin/sh")}
+	args := program
+	if len(args) == 0 {
+		args = []string{cmp.Or(os.Getenv("SHELL"), os.Getenv("ComSpec"), "/bin/sh")}
+	}
 	newConsole := false
 	if !attached {
 		var err error
-		if args, newConsole, err = s.runInTerminal(p.Path, nil); err != nil {
+		if args, newConsole, err = s.runInTerminal(p.Path, program); err != nil {
 			return nil, fmt.Errorf("no terminal found to open %s in; %w", p.Name, err)
 		}
 	}

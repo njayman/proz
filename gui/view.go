@@ -5,8 +5,10 @@ package gui
 
 import (
 	"image/color"
+	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -18,9 +20,15 @@ import (
 	"github.com/njayman/proz/core"
 )
 
-// Launch opens project p in folder with program; an empty program means a
-// terminal in that folder.
-type Launch func(p core.Project, folder, program string) error
+// Way is how to open a project: with a program, an agent CLI (Agent set)
+// or, the zero Way, a terminal.
+type Way struct {
+	Program string
+	Agent   bool
+}
+
+// Launch opens project p in folder the way given.
+type Launch func(p core.Project, folder string, way Way) error
 
 // listShare is the part of the window's width the list takes.
 const listShare = 0.3
@@ -45,6 +53,9 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 	}
 	shown, selected := all, 0
 	picked := false // the user moved the selection
+	agents := core.AgentsOnPath()
+	var open func(Way)
+	var act func(func(int64) error)
 
 	list := newProjectList(
 		func() int { return len(shown) },
@@ -76,6 +87,29 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 			note := widget.NewLabel(l)
 			note.Wrapping = fyne.TextWrapWord
 			detail.Add(note)
+		}
+		detail.Add(widget.NewSeparator())
+		if st.Path != "" { // ponytail: ideas get Set up… here with #93
+			ways := waysToOpen(st.Project, agents)
+			main := widget.NewButton(ways[0].label, func() { open(ways[0].Way) })
+			main.Importance = widget.HighImportance
+			labels := make([]string, len(ways)-1)
+			for i, wy := range ways[1:] {
+				labels[i] = wy.label
+			}
+			more := widget.NewSelect(labels, func(l string) {
+				if i := slices.Index(labels, l); i >= 0 {
+					open(ways[i+1].Way)
+				}
+			})
+			more.PlaceHolder = "More ways to open"
+			detail.Add(container.NewHBox(main, more))
+		}
+		if st.State != core.StateArchived {
+			detail.Add(container.NewHBox(
+				widget.NewButton("Snooze a week", func() { act(func(id int64) error { return s.Snooze(id, 7*24*time.Hour) }) }),
+				widget.NewButton("Drop", func() { act(s.Drop) }),
+			))
 		}
 	}
 	// choose selects row i of what is shown, or nothing when it is empty.
@@ -124,15 +158,9 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 			picked = true
 			choose(selected + step)
 		case fyne.KeyReturn, fyne.KeyEnter:
-			if len(shown) == 0 {
-				return
+			if len(shown) > 0 {
+				open(waysToOpen(shown[selected].Project, nil)[0].Way)
 			}
-			p := shown[selected].Project
-			if err := launch(p, p.Path, mainProgram(p)); err != nil {
-				dialog.ShowError(err, w)
-				return
-			}
-			w.Close()
 		case fyne.KeyEscape:
 			if filter.Text != "" {
 				filter.SetText("")
@@ -146,27 +174,49 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 		w.Canvas().AddShortcut(&desktop.CustomShortcut{KeyName: k, Modifier: fyne.KeyModifierShortcutDefault}, func(fyne.Shortcut) {})
 	}
 
-	go func() {
-		sts, err := statusesOf(s)
-		fyne.Do(func() {
-			if err != nil {
-				dialog.ShowError(err, w)
-				return
-			}
-			byID := map[int64]core.Project{}
-			for _, p := range projects {
-				byID[p.ID] = p
-			}
-			for i := range sts { // statuses carry signals, not programs
-				if p, ok := byID[sts[i].ID]; ok {
-					sts[i].Project = p
+	// open launches the selected project the way given and closes the window.
+	open = func(way Way) {
+		p := shown[selected].Project
+		if err := launch(p, p.Path, way); err != nil {
+			dialog.ShowError(err, w)
+			return
+		}
+		w.Close()
+	}
+	load := func() {
+		go func() {
+			sts, err := statusesOf(s)
+			fyne.Do(func() {
+				if err != nil {
+					dialog.ShowError(err, w)
+					return
 				}
-			}
-			core.RemindOrder(sts)
-			all = sts
-			refilter() // a choice the user made survives the reorder
-		})
-	}()
+				byID := map[int64]core.Project{}
+				for _, p := range projects {
+					byID[p.ID] = p
+				}
+				for i := range sts { // statuses carry signals, not programs
+					if p, ok := byID[sts[i].ID]; ok {
+						sts[i].Project = p
+					}
+				}
+				core.RemindOrder(sts)
+				all = sts
+				refilter() // a choice the user made survives the reorder
+			})
+		}()
+	}
+	// act applies a response to the selected project's reminder, then reads
+	// the statuses again, keeping that project selected.
+	act = func(respond func(int64) error) {
+		if err := respond(shown[selected].ID); err != nil {
+			dialog.ShowError(err, w)
+			return
+		}
+		picked = true
+		load()
+	}
+	load()
 
 	split := container.NewHSplit(container.NewBorder(filter, nil, nil, nil, list), container.NewVScroll(container.NewPadded(detail)))
 	split.Offset = listShare
@@ -297,10 +347,22 @@ func stateWord(st core.Status) string {
 	return word
 }
 
-// mainProgram is the project's first program, or "" (the terminal) when it has none.
-func mainProgram(p core.Project) string {
-	if len(p.Programs) == 0 {
-		return ""
+// way is a way to open a project, as the launcher names it.
+type way struct {
+	Way
+	label string
+}
+
+// waysToOpen are the ways to open p, the main one first: its programs, then
+// a terminal, then each agent. With no programs the terminal is the main one.
+func waysToOpen(p core.Project, agents []core.Agent) []way {
+	var out []way
+	for _, prog := range p.Programs {
+		out = append(out, way{Way{Program: prog}, "Open in " + filepath.Base(prog)})
 	}
-	return p.Programs[0]
+	out = append(out, way{Way{}, "Terminal here"})
+	for _, a := range agents {
+		out = append(out, way{Way{Program: a.Program, Agent: true}, "Start " + a.Name + " here"})
+	}
+	return out
 }
