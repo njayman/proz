@@ -4,7 +4,6 @@
 package gui
 
 import (
-	"cmp"
 	"slices"
 	"strings"
 
@@ -18,6 +17,9 @@ import (
 // Launch opens project p in folder with program; an empty program means a
 // terminal in that folder.
 type Launch func(p core.Project, folder, program string) error
+
+// listShare is the part of the window's width the list takes.
+const listShare = 0.3
 
 // statusesOf reads every project's signals; tests swap in a slow one.
 var statusesOf = (*core.Store).Statuses
@@ -88,7 +90,8 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 			if len(shown) > 0 {
 				was = shown[selected].ID
 			}
-			shown = remindOrder(sts)
+			core.RemindOrder(sts)
+			shown = sts
 			list.Refresh()
 			// a choice the user made survives the reorder; else the top one
 			selected = 0
@@ -115,30 +118,8 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 		w.Close()
 	})
 	split := container.NewHSplit(list, container.NewVScroll(container.NewPadded(detail)))
-	split.Offset = 0.3
+	split.Offset = listShare
 	w.SetContent(split)
-}
-
-// remindOrder puts quiet projects first, then snoozed ones, ideas, active
-// and archived; within a group, the longest quiet first.
-func remindOrder(sts []core.Status) []core.Status {
-	group := func(st core.Status) int {
-		switch {
-		case st.State == core.StateArchived:
-			return 4
-		case st.Path == "":
-			return 2
-		case st.State == core.StateStale:
-			return 0
-		case st.State == core.StateSnoozed:
-			return 1
-		}
-		return 3
-	}
-	slices.SortStableFunc(sts, func(a, b core.Status) int {
-		return cmp.Or(cmp.Compare(group(a), group(b)), cmp.Compare(b.Quiet, a.Quiet))
-	})
-	return sts
 }
 
 // truncated is a one-line label that ends in an ellipsis rather than
@@ -152,17 +133,17 @@ func truncated(text string, style fyne.TextStyle) *widget.Label {
 // stateWord is how the right pane names a project's state; empty until
 // its status is in.
 func stateWord(st core.Status) string {
-	switch {
-	case st.State == "":
-		return ""
-	case st.State == core.StateArchived:
-		return "archived"
-	case st.Path == "":
-		return "idea"
-	case st.State == core.StateStale:
-		return "gone quiet"
+	word := string(st.State)
+	if st.State == core.StateStale {
+		word = "gone quiet"
 	}
-	return string(st.State)
+	if st.Path == "" && st.State != "" { // ideas say so whatever their state
+		if st.State == core.StateActive {
+			return "idea"
+		}
+		return "idea, " + word
+	}
+	return word
 }
 
 // mainProgram is the project's first program, or "" (the terminal) when it has none.

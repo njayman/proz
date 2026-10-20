@@ -80,6 +80,13 @@ func launcherOver(t *testing.T, fail error, now *time.Time, setup func(*core.Sto
 	return w, &got, &closed
 }
 
+func must(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // press sends key where the driver would: the focused widget, else the canvas.
 func press(w fyne.Window, key fyne.KeyName) {
 	e := &fyne.KeyEvent{Name: key}
@@ -178,7 +185,7 @@ func labels(w fyne.Window) []label {
 // texts is every label's text on screen, top to bottom, left pane before right.
 func texts(w fyne.Window) []string {
 	found := slices.DeleteFunc(labels(w), func(l label) bool { return l.Text == "" })
-	split := w.Canvas().Size().Width * 0.3 // where the panes meet
+	split := w.Canvas().Size().Width * listShare // where the panes meet
 	sort.SliceStable(found, func(i, j int) bool {
 		if li, lj := found[i].at.X < split, found[j].at.X < split; li != lj {
 			return li
@@ -239,21 +246,23 @@ func TestTheListPutsQuietFirstThenSnoozedIdeasActiveAndArchivedAndMarksQuiet(t *
 			if err := s.AddProject(core.Project{Name: name, Path: path}); err != nil {
 				t.Fatal(err)
 			}
-			ps, _ := s.Projects()
+			ps, err := s.Projects()
+			must(t, err)
 			return ps[len(ps)-1].ID
 		}
 		archived := add("archived", t.TempDir(), t0)
+		add("quiet-idea", "", t0.Add(15*day))
 		add("active", t.TempDir(), t0.Add(29*day))
 		add("newer-quiet", t.TempDir(), t0.Add(10*day))
 		add("idea", "", t0.Add(29*day))
 		snoozed := add("snoozed", t.TempDir(), t0)
 		add("older-quiet", t.TempDir(), t0)
 		now = t0.Add(30 * day)
-		s.Drop(archived)
-		s.Snooze(snoozed, 7*day)
+		must(t, s.Drop(archived))
+		must(t, s.Snooze(snoozed, 7*day))
 	})
 	got := eventually(t, w, "GONE QUIET")
-	want := []string{"● older-quiet", "● newer-quiet", "snoozed", "idea", "active", "archived"}
+	want := []string{"● older-quiet", "● newer-quiet", "● quiet-idea", "snoozed", "idea", "active", "archived"}
 	if !slices.Equal(got[:len(want)], want) {
 		t.Fatalf("list: want %q, got %q", want, got)
 	}
@@ -271,9 +280,10 @@ func TestLongNamesAndNotesNeverWidenThePanesOrResizeTheWindow(t *testing.T) {
 	long := strings.Repeat("very long project name ", 20)
 	now := t0
 	w, _, _ := launcherOver(t, nil, &now, func(s *core.Store) {
-		s.AddProject(core.Project{Name: long, Path: t.TempDir()})
-		ps, _ := s.Projects()
-		s.AddMilestone(ps[0].ID, strings.Repeat("shipped the login page; next is signup ", 20))
+		must(t, s.AddProject(core.Project{Name: long, Path: t.TempDir()}))
+		ps, err := s.Projects()
+		must(t, err)
+		must(t, s.AddMilestone(ps[0].ID, strings.Repeat("shipped the login page; next is signup ", 20)))
 	})
 	eventually(t, w, "Milestone: shipped")
 	if size := w.Canvas().Size(); size != fyne.NewSize(720, 480) {
@@ -302,11 +312,11 @@ func TestAProjectPickedWhileStatusesLoadStaysPickedAfterTheReorder(t *testing.T)
 	now := t0
 	w, got, _ := launcherOver(t, nil, &now, func(s *core.Store) {
 		now = t0.Add(29 * day)
-		s.AddProject(core.Project{Name: "fresh", Path: t.TempDir()})
+		must(t, s.AddProject(core.Project{Name: "fresh", Path: t.TempDir()}))
 		now = t0.Add(5 * day)
-		s.AddProject(core.Project{Name: "picked", Path: t.TempDir()})
+		must(t, s.AddProject(core.Project{Name: "picked", Path: t.TempDir()}))
 		now = t0
-		s.AddProject(core.Project{Name: "quiet", Path: t.TempDir()}) // the top once sorted
+		must(t, s.AddProject(core.Project{Name: "quiet", Path: t.TempDir()})) // the top once sorted
 		now = t0.Add(30 * day)
 	})
 	tap(t, w, "picked")
