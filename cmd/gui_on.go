@@ -14,9 +14,10 @@ import (
 var guiCmd = &cobra.Command{
 	Use:   "gui",
 	Short: "Open the launcher window",
-	Long: "Open a window listing your projects. Enter opens the selected one\n" +
-		"with its first program, or a terminal in its folder when it has none,\n" +
-		"and the window closes.",
+	Long: "Open a window listing your projects. Type to filter, Up and Down to\n" +
+		"move. Enter opens the selected one with its first program, or a\n" +
+		"terminal in its folder when it has none, and the window closes. Esc\n" +
+		"clears the filter, then closes the window.",
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return withStore(func(s *core.Store) error { return gui.Run(s, guiLaunch(s)) })

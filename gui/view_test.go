@@ -396,3 +396,87 @@ func TestEnterAfterStatusesReturnStillOpensTheMainProgram(t *testing.T) {
 		t.Fatalf("opened %+v", *got)
 	}
 }
+
+// typeText types s where the keyboard is, as a person would.
+func typeText(w fyne.Window, s string) { test.Type(w.Canvas().Focused(), s) }
+
+func TestTypingFiltersByNameAndEnterOpensTheMatch(t *testing.T) {
+	slowStatuses(t) // never returns: the keys must not wait on it
+	w, got, _ := launcher(t,
+		core.Project{Name: "web", Path: "/src/web"},
+		core.Project{Name: "Billing API", Path: "/src/api"},
+		core.Project{Name: "webhooks", Path: "/src/hooks"})
+	typeText(w, "api")
+	if s := strings.Join(texts(w), "\n"); strings.Contains(s, "webhooks") || !strings.Contains(s, "Billing API") {
+		t.Fatalf("filtered list: %q", s)
+	}
+	press(w, fyne.KeyReturn)
+	if len(*got) != 1 || (*got)[0].name != "Billing API" {
+		t.Fatalf("opened %+v", *got)
+	}
+}
+
+func TestUpAndDownMoveTheSelectionWhileTheCursorStaysInTheFilter(t *testing.T) {
+	slowStatuses(t)
+	w, got, _ := launcher(t,
+		core.Project{Name: "web", Path: "/src/web"},
+		core.Project{Name: "api", Path: "/src/api"},
+		core.Project{Name: "docs", Path: "/src/docs"})
+	filter := w.Canvas().Focused()
+	for _, k := range []fyne.KeyName{fyne.KeyDown, fyne.KeyDown, fyne.KeyDown, fyne.KeyUp} { // the third Down stays on the last
+		press(w, k)
+	}
+	if w.Canvas().Focused() != filter || filter == nil {
+		t.Fatal("the cursor must stay in the filter box")
+	}
+	press(w, fyne.KeyReturn)
+	if len(*got) != 1 || (*got)[0].name != "api" {
+		t.Fatalf("opened %+v", *got)
+	}
+}
+
+func TestEscClearsTheFilterThenASecondEscClosesTheWindow(t *testing.T) {
+	slowStatuses(t)
+	w, got, closed := launcher(t, core.Project{Name: "web", Path: "/src/web"})
+	typeText(w, "zzz")
+	press(w, fyne.KeyReturn)
+	if len(*got) != 0 || !slices.Contains(texts(w), "No match.") {
+		t.Fatalf("no match: opened %+v, screen %q", *got, texts(w))
+	}
+	press(w, fyne.KeyEscape)
+	if *closed || !slices.Contains(texts(w), "web") {
+		t.Fatalf("the first Esc clears the filter: closed %v, screen %q", *closed, texts(w))
+	}
+	press(w, fyne.KeyEscape)
+	if !*closed || len(*got) != 0 {
+		t.Fatalf("the second Esc closes without opening: closed %v, opened %+v", *closed, *got)
+	}
+}
+
+func TestTheFilterBoxAndListNameThemselvesToScreenReaders(t *testing.T) {
+	slowStatuses(t)
+	w, _, _ := launcher(t, core.Project{Name: "web", Path: "/src/web"})
+	var names []string
+	var walk func(o fyne.CanvasObject)
+	walk = func(o fyne.CanvasObject) {
+		if a, ok := o.(fyne.Accessible); ok {
+			names = append(names, a.AccessibilityLabel())
+		}
+		switch o := o.(type) {
+		case *fyne.Container:
+			for _, k := range o.Objects {
+				walk(k)
+			}
+		case fyne.Widget:
+			for _, k := range test.WidgetRenderer(o).Objects() {
+				walk(k)
+			}
+		}
+	}
+	walk(w.Content())
+	for _, want := range []string{"Filter projects", "Projects"} {
+		if !slices.Contains(names, want) {
+			t.Fatalf("no %q for screen readers: %q", want, names)
+		}
+	}
+}
