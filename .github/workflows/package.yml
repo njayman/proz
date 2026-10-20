@@ -53,3 +53,26 @@ jobs:
             dist/*.deb
             dist/*.rpm
             dist/*.pkg.tar.zst
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build the installer
+        run: scripts/package-windows.ps1
+
+      - name: Install, upgrade and uninstall it silently
+        run: scripts/check-windows-installer.ps1 dist\proz-setup-windows-amd64.exe
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/proz-setup-windows-amd64.exe
