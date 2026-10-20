@@ -3,11 +3,16 @@ package gui
 import (
 	"errors"
 	"os"
+	"slices"
+	"sort"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/widget"
 	"github.com/njayman/proz/core"
 )
 
@@ -38,18 +43,29 @@ func launcher(t *testing.T, projects ...core.Project) (fyne.Window, *[]opened, *
 // launcherFailing is launcher whose launch function returns fail.
 func launcherFailing(t *testing.T, fail error, projects ...core.Project) (fyne.Window, *[]opened, *bool) {
 	t.Helper()
-	s, err := core.Open(t.TempDir(), func() time.Time { return t0 })
+	now := t0
+	return launcherOver(t, fail, &now, func(s *core.Store) {
+		for _, p := range projects {
+			if err := s.AddProject(p); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+}
+
+// launcherOver opens the view over a temp store whose clock reads *now,
+// once setup has filled it.
+func launcherOver(t *testing.T, fail error, now *time.Time, setup func(*core.Store)) (fyne.Window, *[]opened, *bool) {
+	t.Helper()
+	s, err := core.Open(t.TempDir(), func() time.Time { return *now })
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { s.Close() })
-	for _, p := range projects {
-		if err := s.AddProject(p); err != nil {
-			t.Fatal(err)
-		}
-	}
+	setup(s)
 	var got []opened
 	w := test.NewWindow(nil)
+	w.Resize(fyne.NewSize(720, 480))
 	closed := false
 	w.SetOnClosed(func() { closed = true })
 	t.Cleanup(func() {
@@ -110,5 +126,194 @@ func TestAFailedLaunchKeepsTheWindowOpen(t *testing.T) {
 	press(w, fyne.KeyReturn)
 	if len(*got) != 1 || *closed {
 		t.Fatalf("opened %+v, closed %v", *got, *closed)
+	}
+}
+
+// slowStatuses makes the view's status source wait for release, the way a
+// slow git repository would, and restores the real one after the test.
+func slowStatuses(t *testing.T) (release func()) {
+	t.Helper()
+	gate := make(chan struct{})
+	was := statusesOf
+	statusesOf = func(s *core.Store) ([]core.Status, error) { <-gate; return s.Statuses() }
+	t.Cleanup(func() { statusesOf = was })
+	var once sync.Once
+	return func() { once.Do(func() { close(gate) }) }
+}
+
+// label is a label on screen and where it is in the window.
+type label struct {
+	*widget.Label
+	at fyne.Position
+}
+
+// labels is every visible label on screen. The test driver cannot place
+// list rows, so positions are added up walking down from the content.
+func labels(w fyne.Window) []label {
+	var found []label
+	var walk func(o fyne.CanvasObject, origin fyne.Position)
+	walk = func(o fyne.CanvasObject, origin fyne.Position) {
+		if !o.Visible() {
+			return
+		}
+		at := origin.Add(o.Position())
+		var kids []fyne.CanvasObject
+		switch o := o.(type) {
+		case *widget.Label:
+			found = append(found, label{o, at})
+			return
+		case *fyne.Container:
+			kids = o.Objects
+		case fyne.Widget:
+			kids = test.WidgetRenderer(o).Objects()
+		}
+		for _, k := range kids {
+			walk(k, at)
+		}
+	}
+	walk(w.Content(), fyne.Position{})
+	return found
+}
+
+// texts is every label's text on screen, top to bottom, left pane before right.
+func texts(w fyne.Window) []string {
+	found := slices.DeleteFunc(labels(w), func(l label) bool { return l.Text == "" })
+	split := w.Canvas().Size().Width * 0.3 // where the panes meet
+	sort.SliceStable(found, func(i, j int) bool {
+		if li, lj := found[i].at.X < split, found[j].at.X < split; li != lj {
+			return li
+		}
+		return found[i].at.Y < found[j].at.Y
+	})
+	out := make([]string, len(found))
+	for i, f := range found {
+		out[i] = f.Text
+	}
+	return out
+}
+
+// eventually waits for the screen to show want.
+func eventually(t *testing.T, w fyne.Window, want string) []string {
+	t.Helper()
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		if got := texts(w); slices.ContainsFunc(got, func(s string) bool { return strings.Contains(s, want) }) {
+			return got
+		}
+	}
+	t.Fatalf("never showed %q: %q", want, texts(w))
+	return nil
+}
+
+func TestTheListShowsAtOnceAndSignalsFillInWhenStatusesReturn(t *testing.T) {
+	release := slowStatuses(t)
+	defer release()
+	w, got, _ := launcher(t, core.Project{Name: "web", Path: t.TempDir(), Programs: []string{"code"}})
+
+	if s := strings.Join(texts(w), "\n"); !strings.Contains(s, "web") || strings.Contains(s, "Quiet for") {
+		t.Fatalf("before statuses: want the name and no note yet, got %q", s)
+	}
+	press(w, fyne.KeyReturn) // nothing waits on git
+	if len(*got) != 1 {
+		t.Fatalf("Enter before statuses opened %+v", *got)
+	}
+}
+
+func TestTheRightPaneShowsNameStateAndNote(t *testing.T) {
+	release := slowStatuses(t)
+	w, _, _ := launcher(t, core.Project{Name: "web", Path: t.TempDir()})
+	release()
+	s := strings.Join(eventually(t, w, "Quiet for"), "\n")
+	for _, want := range []string{"web", "ACTIVE", "Quiet for"} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("want %q on screen: %q", want, s)
+		}
+	}
+}
+
+func TestTheListPutsQuietFirstThenSnoozedIdeasActiveAndArchivedAndMarksQuiet(t *testing.T) {
+	const day = 24 * time.Hour
+	now := t0
+	w, _, _ := launcherOver(t, nil, &now, func(s *core.Store) {
+		add := func(name, path string, at time.Time) int64 {
+			now = at
+			if err := s.AddProject(core.Project{Name: name, Path: path}); err != nil {
+				t.Fatal(err)
+			}
+			ps, _ := s.Projects()
+			return ps[len(ps)-1].ID
+		}
+		archived := add("archived", t.TempDir(), t0)
+		add("active", t.TempDir(), t0.Add(29*day))
+		add("newer-quiet", t.TempDir(), t0.Add(10*day))
+		add("idea", "", t0.Add(29*day))
+		snoozed := add("snoozed", t.TempDir(), t0)
+		add("older-quiet", t.TempDir(), t0)
+		now = t0.Add(30 * day)
+		s.Drop(archived)
+		s.Snooze(snoozed, 7*day)
+	})
+	got := eventually(t, w, "GONE QUIET")
+	want := []string{"● older-quiet", "● newer-quiet", "snoozed", "idea", "active", "archived"}
+	if !slices.Equal(got[:len(want)], want) {
+		t.Fatalf("list: want %q, got %q", want, got)
+	}
+}
+
+func TestNoProjectsSaysSoOnceStatusesReturn(t *testing.T) {
+	release := slowStatuses(t)
+	w, _, _ := launcher(t)
+	release()
+	eventually(t, w, "No projects yet")
+	time.Sleep(50 * time.Millisecond) // the fill-in must not crash on an empty list
+}
+
+func TestLongNamesAndNotesNeverWidenThePanesOrResizeTheWindow(t *testing.T) {
+	long := strings.Repeat("very long project name ", 20)
+	now := t0
+	w, _, _ := launcherOver(t, nil, &now, func(s *core.Store) {
+		s.AddProject(core.Project{Name: long, Path: t.TempDir()})
+		ps, _ := s.Projects()
+		s.AddMilestone(ps[0].ID, strings.Repeat("shipped the login page; next is signup ", 20))
+	})
+	eventually(t, w, "Milestone: shipped")
+	if size := w.Canvas().Size(); size != fyne.NewSize(720, 480) {
+		t.Fatalf("the window resized to %v", size)
+	}
+	if min := w.Content().MinSize(); min.Width > 720 {
+		t.Fatalf("content wants %v wide, wider than the window", min.Width)
+	}
+}
+
+// tap clicks the label showing text, as a pointer would.
+func tap(t *testing.T, w fyne.Window, text string) {
+	t.Helper()
+	for _, l := range labels(w) {
+		if l.Text == text {
+			test.TapCanvas(w.Canvas(), l.at.Add(fyne.NewPos(2, 2)))
+			return
+		}
+	}
+	t.Fatalf("no %q on screen: %q", text, texts(w))
+}
+
+func TestAProjectPickedWhileStatusesLoadStaysPickedAfterTheReorder(t *testing.T) {
+	const day = 24 * time.Hour
+	release := slowStatuses(t)
+	now := t0
+	w, got, _ := launcherOver(t, nil, &now, func(s *core.Store) {
+		now = t0.Add(29 * day)
+		s.AddProject(core.Project{Name: "fresh", Path: t.TempDir()})
+		now = t0.Add(5 * day)
+		s.AddProject(core.Project{Name: "picked", Path: t.TempDir()})
+		now = t0
+		s.AddProject(core.Project{Name: "quiet", Path: t.TempDir()}) // the top once sorted
+		now = t0.Add(30 * day)
+	})
+	tap(t, w, "picked")
+	release()
+	eventually(t, w, "● quiet")
+	press(w, fyne.KeyReturn)
+	if len(*got) != 1 || (*got)[0].name != "picked" {
+		t.Fatalf("opened %+v", *got)
 	}
 }
