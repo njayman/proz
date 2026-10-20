@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"runtime/debug"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -18,7 +19,7 @@ func resolveVersion(stamped string) string {
 		return stamped
 	}
 	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
-		return info.Main.Version
+		return strings.TrimPrefix(info.Main.Version, "v") // as release builds stamp it
 	}
 	return "dev"
 }

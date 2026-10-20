@@ -2,7 +2,7 @@
 # Builds the desktop build (launcher, tray and CLI; cgo) for this machine's
 # architecture and packages it as .deb, .rpm and Arch packages into ./dist.
 # It builds natively: the launcher needs cgo and the OpenGL and X11 headers
-# (on Debian and Ubuntu: gcc libgl1-mesa-dev xorg-dev). Needs nfpm.
+# (the package list is in README.md, under Install). Needs nfpm.
 #
 #   scripts/package-linux.sh [VERSION]    # VERSION defaults to 0.0.0-snapshot
 set -eu

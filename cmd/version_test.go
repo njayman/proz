@@ -21,7 +21,8 @@ func TestVersionFlagPrintsTheStampedVersion(t *testing.T) {
 }
 
 func TestUnstampedBuildsStillHaveAVersion(t *testing.T) {
-	if v := resolveVersion(""); v == "" {
-		t.Fatal("a build without -ldflags must still report a version")
+	// A test binary records no module version.
+	if v := resolveVersion(""); v != "dev" {
+		t.Fatalf("an unstamped build reported %q, want dev", v)
 	}
 }

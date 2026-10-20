@@ -6,10 +6,9 @@
 #
 #   scripts/check-linux-package.sh dist/proz_*.deb dist/proz_*.rpm dist/proz_*.pkg.tar.zst
 #
-# Needs docker (or podman, with DOCKER=podman). Installs nothing on the host.
+# Needs docker. Installs nothing on the host.
 set -eu
 
-DOCKER="${DOCKER:-docker}"
 [ $# -gt 0 ] || { echo "usage: $0 PACKAGE..." >&2; exit 2; }
 
 # The checks that run inside the container, as root. $1 is the package.
@@ -27,7 +26,7 @@ case "$pkg" in
     dnf install -y -q desktop-file-utils "$pkg" >/dev/null
     files=$(rpm -ql proz); remove="dnf remove -y -q proz" ;;
   *.pkg.tar.zst)
-    pacman -Sy --noconfirm --needed desktop-file-utils >/dev/null
+    pacman -Syu --noconfirm --needed desktop-file-utils >/dev/null
     pacman -U --noconfirm "$pkg" >/dev/null
     files=$(pacman -Qlq proz); remove="pacman -R --noconfirm proz" ;;
 esac
@@ -35,7 +34,7 @@ fail() { echo "FAIL: $*"; exit 1; }
 
 [ -x /usr/bin/proz ] || fail "no /usr/bin/proz"
 command -v proz >/dev/null || fail "proz is not on PATH"
-proz --version || fail "proz --version"
+proz --version >/dev/null || fail "proz --version"
 proz help gui | grep -q "proz gui" || fail "this proz has no gui command"
 if proz help gui | grep -q "desktop builds only"; then fail "proz gui is the plain build, not the desktop build"; fi
 entry=/usr/share/applications/proz.desktop
@@ -48,7 +47,7 @@ grep -qx "Exec=proz gui" "$entry" || fail "the app menu entry does not run proz 
 proz list --json >/dev/null
 [ -f "$HOME/.config/proz/proz.db" ] || fail "proz did not create its config folder"
 
-$remove >/dev/null
+$remove >/dev/null || fail "removing the package"
 for f in $files; do
   if [ -e "$f" ] && [ ! -d "$f" ]; then fail "removing the package left $f"; fi
 done
@@ -72,6 +71,6 @@ for pkg in "$@"; do
   name=$(basename "$pkg")
   for image in $images; do
     echo "== $name on $image"
-    "$DOCKER" run --rm -v "$dir:/pkg:ro" "$image" sh -c "$inner" check "/pkg/$name"
+    docker run --rm -v "$dir:/pkg:ro" "$image" sh -c "$inner" check "/pkg/$name"
   done
 done
