@@ -720,6 +720,28 @@ func TestConfigTerminalJSONContract(t *testing.T) {
 	}
 }
 
+// The launcher's light or dark look, also set with `proz config theme`.
+func TestConfigThemeJSONContract(t *testing.T) {
+	configDir(t)
+	var got map[string]string
+	if err := json.Unmarshal([]byte(run(t, "config", "theme", "--json")), &got); err != nil || got["theme"] != "system" {
+		t.Fatalf("unset: want system, got %v, %v", got, err)
+	}
+	if err := json.Unmarshal([]byte(run(t, "config", "theme", "dark", "--json")), &got); err != nil || got["theme"] != "dark" {
+		t.Fatalf("set: got %v, %v", got, err)
+	}
+	if out := strings.TrimSpace(run(t, "config", "theme")); out != "dark" {
+		t.Fatalf("plain: got %q", out)
+	}
+	if err := execute("config", "theme", "blue"); err == nil || !strings.Contains(err.Error(), "system, light or dark") {
+		t.Fatalf("want a refusal naming the choices, got %v", err)
+	}
+	run(t, "config", "theme", "system")
+	if out := strings.TrimSpace(run(t, "config", "theme")); out != "system" {
+		t.Fatalf("back to system: got %q", out)
+	}
+}
+
 // Agents fix a wrong guess with `proz config needs-terminal --json`.
 func TestConfigNeedsTerminalJSONContract(t *testing.T) {
 	configDir(t)

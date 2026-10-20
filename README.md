@@ -162,6 +162,10 @@ The digest goes out on Monday by default (`proz config digest-day friday` change
 
 Prints the stale threshold in days, or sets it. With `--project`, reads or sets that project's own threshold; `0` removes the override.
 
+### `proz config theme [system|light|dark] [--json]`
+
+Shows or sets how the launcher (`proz gui`) looks. `system` (the default) follows your desktop's light or dark mode; the launcher's Dark check box sets `light` or `dark`.
+
 ### `proz completion [bash|zsh|fish|powershell]`
 
 Prints a shell completion script. Detects the shell from `$SHELL` if no argument is given.

@@ -2,6 +2,7 @@ package gui
 
 import (
 	"errors"
+	"image/color"
 	"os"
 	"slices"
 	"sort"
@@ -12,6 +13,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/njayman/proz/core"
 )
@@ -324,6 +326,73 @@ func TestAProjectPickedWhileStatusesLoadStaysPickedAfterTheReorder(t *testing.T)
 	eventually(t, w, "● quiet")
 	press(w, fyne.KeyReturn)
 	if len(*got) != 1 || (*got)[0].name != "picked" {
+		t.Fatalf("opened %+v", *got)
+	}
+}
+
+// background is the window's background colour as the app's theme draws it now.
+func background() color.Color {
+	return fyne.CurrentApp().Settings().Theme().Color(theme.ColorNameBackground, fyne.CurrentApp().Settings().ThemeVariant())
+}
+
+func TestTheDarkToggleSwitchesTheLookAndRemembersIt(t *testing.T) {
+	var s *core.Store
+	now := t0
+	w, _, _ := launcherOver(t, nil, &now, func(st *core.Store) { s = st; must(t, s.SetTheme(core.ThemeLight)) })
+	t.Cleanup(func() { fyne.CurrentApp().Settings().SetTheme(nil) })
+	light, dark := theme.DefaultTheme().Color(theme.ColorNameBackground, theme.VariantLight), theme.DefaultTheme().Color(theme.ColorNameBackground, theme.VariantDark)
+	if background() != light {
+		t.Fatalf("a light setting opens light, got %v", background())
+	}
+	tapCheck(t, w, "Dark")
+	if got, err := s.Theme(); err != nil || got != core.ThemeDark || background() != dark {
+		t.Fatalf("ticked: want dark saved and shown, got %q, %v, %v", got, err, background())
+	}
+	tapCheck(t, w, "Dark")
+	if got, _ := s.Theme(); got != core.ThemeLight || background() != light {
+		t.Fatalf("unticked: want light saved and shown, got %q, %v", got, background())
+	}
+}
+
+// tapCheck taps the check box labelled text.
+func tapCheck(t *testing.T, w fyne.Window, text string) {
+	t.Helper()
+	var find func(o fyne.CanvasObject) *widget.Check
+	find = func(o fyne.CanvasObject) *widget.Check {
+		switch o := o.(type) {
+		case *widget.Check:
+			if o.Text == text {
+				return o
+			}
+		case *fyne.Container:
+			for _, k := range o.Objects {
+				if c := find(k); c != nil {
+					return c
+				}
+			}
+		case fyne.Widget:
+			for _, k := range test.WidgetRenderer(o).Objects() {
+				if c := find(k); c != nil {
+					return c
+				}
+			}
+		}
+		return nil
+	}
+	c := find(w.Content())
+	if c == nil {
+		t.Fatalf("no %q check box", text)
+	}
+	test.Tap(c)
+}
+
+func TestEnterAfterStatusesReturnStillOpensTheMainProgram(t *testing.T) {
+	release := slowStatuses(t)
+	w, got, _ := launcher(t, core.Project{Name: "web", Path: t.TempDir(), Programs: []string{"code"}})
+	release()
+	eventually(t, w, "Quiet for")
+	press(w, fyne.KeyReturn)
+	if len(*got) != 1 || (*got)[0].program != "code" {
 		t.Fatalf("opened %+v", *got)
 	}
 }

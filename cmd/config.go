@@ -101,6 +101,36 @@ var terminalCmd = &cobra.Command{
 	},
 }
 
+var themeJSON bool
+
+var themeCmd = &cobra.Command{
+	Use:   "theme [system|light|dark]",
+	Short: "Show or set the launcher's light or dark look",
+	Long: "Show or set how the launcher (proz gui) looks: system follows the\n" +
+		"system's light or dark mode, light and dark always use that one.",
+	Args: cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return withStore(func(s *core.Store) error {
+			if len(args) == 1 {
+				if err := s.SetTheme(core.Theme(args[0])); err != nil {
+					return err
+				}
+			}
+			t, err := s.Theme()
+			if err != nil {
+				return err
+			}
+			if themeJSON {
+				return printJSON(contract.ThemeSetting{Theme: string(t)})
+			}
+			if len(args) == 0 {
+				fmt.Println(t)
+			}
+			return nil
+		})
+	},
+}
+
 var needsTerminalJSON bool
 
 var needsTerminalCmd = &cobra.Command{
@@ -196,6 +226,8 @@ func init() {
 	configCmd.AddCommand(staleDaysCmd)
 	terminalCmd.Flags().BoolVar(&terminalJSON, "json", false, "print the setting as JSON; an empty terminal means detect")
 	configCmd.AddCommand(terminalCmd)
+	themeCmd.Flags().BoolVar(&themeJSON, "json", false, "print the setting as JSON")
+	configCmd.AddCommand(themeCmd)
 	needsTerminalCmd.Flags().BoolVar(&needsTerminalJSON, "json", false, "print program, needs_terminal and set (true when it is your setting) as JSON")
 	configCmd.AddCommand(needsTerminalCmd)
 	rootCmd.AddCommand(configCmd)

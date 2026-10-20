@@ -4,12 +4,15 @@
 package gui
 
 import (
+	"image/color"
 	"slices"
 	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/njayman/proz/core"
 )
@@ -90,6 +93,15 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 			if len(shown) > 0 {
 				was = shown[selected].ID
 			}
+			byID := map[int64]core.Project{}
+			for _, p := range projects {
+				byID[p.ID] = p
+			}
+			for i := range sts { // statuses carry signals, not programs
+				if p, ok := byID[sts[i].ID]; ok {
+					sts[i].Project = p
+				}
+			}
 			core.RemindOrder(sts)
 			shown = sts
 			list.Refresh()
@@ -119,7 +131,52 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 	})
 	split := container.NewHSplit(list, container.NewVScroll(container.NewPadded(detail)))
 	split.Offset = listShare
-	w.SetContent(split)
+	w.SetContent(container.NewBorder(container.NewHBox(layout.NewSpacer(), darkToggle(w, s)), nil, nil, nil, split))
+}
+
+// darkToggle applies the saved look and is the check box that switches it:
+// ticked is dark, unticked light. Until it is used, the system decides.
+func darkToggle(w fyne.Window, s *core.Store) *widget.Check {
+	settings := fyne.CurrentApp().Settings()
+	look, err := s.Theme()
+	if err != nil {
+		dialog.ShowError(err, w)
+	}
+	apply := func(t core.Theme) {
+		if t == core.ThemeSystem {
+			settings.SetTheme(nil) // ponytail: nil restores Fyne's default, which follows the system
+			return
+		}
+		v := theme.VariantLight
+		if t == core.ThemeDark {
+			v = theme.VariantDark
+		}
+		settings.SetTheme(fixedVariant{theme.DefaultTheme(), v})
+	}
+	apply(look)
+	dark := widget.NewCheck("Dark", func(on bool) {
+		t := core.ThemeLight
+		if on {
+			t = core.ThemeDark
+		}
+		if err := s.SetTheme(t); err != nil {
+			dialog.ShowError(err, w)
+			return
+		}
+		apply(t)
+	})
+	dark.Checked = look == core.ThemeDark || look == core.ThemeSystem && settings.ThemeVariant() == theme.VariantDark
+	return dark
+}
+
+// fixedVariant is a theme that draws one variant whatever the system says.
+type fixedVariant struct {
+	fyne.Theme
+	variant fyne.ThemeVariant
+}
+
+func (f fixedVariant) Color(n fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
+	return f.Theme.Color(n, f.variant)
 }
 
 // truncated is a one-line label that ends in an ellipsis rather than
