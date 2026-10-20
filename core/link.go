@@ -89,7 +89,7 @@ func (s *Store) AddLink(id int64, ref, provider, kind string) (Link, error) {
 	if path := strings.TrimSpace(ref); filepath.IsAbs(path) {
 		l = Link{Kind: LinkBrain, Ref: resolve(path)}
 		l.Provider = notesTool(l.Ref)
-		if kind != "" && kind != LinkBrain || provider != "" && provider != l.Provider {
+		if (kind != "" && kind != LinkBrain) || (provider != "" && provider != l.Provider) {
 			return Link{}, fmt.Errorf("%s is a %s link, always a brain: leave out its provider and kind", l.Ref, l.Provider)
 		}
 	} else {
@@ -160,6 +160,7 @@ func (s *Store) recognize(ref, provider, kind string) (Link, string, error) {
 
 // notesTool names the local notes at path: obsidian or logseq when a vault
 // (.obsidian) or graph (logseq) folder sits at or above it, else folder.
+// ponytail: any folder named logseq counts, so a clone of the logseq repo marks its parent a graph; check for logseq/config.edn if users hit it.
 func notesTool(path string) string {
 	for dir := path; ; dir = filepath.Dir(dir) {
 		if isDir(filepath.Join(dir, ".obsidian")) {

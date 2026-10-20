@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-// real is path with symlinks resolved, as proz stores a local link.
-func real(t *testing.T, path string) string {
+// resolved is path with symlinks resolved, as proz stores a local link.
+func resolved(t *testing.T, path string) string {
 	t.Helper()
 	r, err := filepath.EvalSymlinks(path)
 	if err != nil {
@@ -33,7 +33,7 @@ func TestALocalLinkIsNamedFromWhatIsOnDisk(t *testing.T) {
 		{plain + string(filepath.Separator), "folder"},
 	} {
 		l, err := s.AddLink(web.ID, c.ref, "", "")
-		if want := (Link{Kind: LinkBrain, Provider: c.provider, Ref: real(t, c.ref)}); err != nil || l != want {
+		if want := (Link{Kind: LinkBrain, Provider: c.provider, Ref: resolved(t, c.ref)}); err != nil || l != want {
 			t.Errorf("%s: got %+v, %v; want %+v", c.ref, l, err, want)
 		}
 	}
@@ -50,7 +50,7 @@ func TestALocalLinkIsNamedFromWhatIsOnDisk(t *testing.T) {
 	if err := os.Symlink(plain, alias); err != nil {
 		t.Skip(err) // Windows without the symlink privilege
 	}
-	if l, err := s.AddLink(web.ID, alias, "", ""); err != nil || l.Ref != real(t, plain) {
+	if l, err := s.AddLink(web.ID, alias, "", ""); err != nil || l.Ref != resolved(t, plain) {
 		t.Fatalf("a symlink is stored as where it points: %+v, %v", l, err)
 	}
 	if err := s.RemoveLink(web.ID, alias); err != nil {
@@ -95,6 +95,45 @@ func TestProzsOwnFilesInALinkedFolderAreNeverActivity(t *testing.T) {
 	c.t = t0.Add(400 * day)
 	if st, _ := s.Status(web.ID); !st.LastActivity.Equal(t0.Add(-30 * day)) {
 		t.Fatalf("proz's database counted: %v", st.LastActivity)
+	}
+}
+
+func TestProzsBrainNotesAreNeverActivityThroughALink(t *testing.T) {
+	c := &clock{t0.Add(-30 * day)} // registered before the notes' real modification times
+	s := openAt(t, c)
+	brain, vault := t.TempDir(), t.TempDir()
+	mkdirs(t, filepath.Join(vault, ".obsidian"), filepath.Join(vault, "api"))
+	if err := s.SetBrainPath(brain); err != nil {
+		t.Fatal(err)
+	}
+	s.AddIdea("web")
+	s.AddIdea("api")
+	web, api := projectNamed(t, s, "web"), projectNamed(t, s, "api")
+	// api's note lives in the vault, linked from the brain
+	if err := os.Symlink(filepath.Join(vault, "api", "api.md"), filepath.Join(brain, "api.md")); err != nil {
+		t.Skip(err) // Windows without the symlink privilege
+	}
+	os.WriteFile(filepath.Join(vault, "api", "api.md"), nil, 0o644)
+	for _, p := range []Project{web, api} {
+		if _, _, err := s.BrainNote(p.ID); err != nil { // proz writes each note now
+			t.Fatal(err)
+		}
+	}
+	mustLink(t, s, web.ID, filepath.Join(brain, "web.md"))
+	mustLink(t, s, api.ID, filepath.Join(vault, "api"))
+
+	c.t = t0.Add(400 * day)
+	for _, p := range []Project{web, api} {
+		if st, _ := s.Status(p.ID); !st.LastActivity.Equal(t0.Add(-30 * day)) {
+			t.Errorf("%s: proz's own note counted: %v", p.Name, st.LastActivity)
+		}
+	}
+}
+
+func mustLink(t *testing.T, s *Store, id int64, ref string) {
+	t.Helper()
+	if _, err := s.AddLink(id, ref, "", ""); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -146,7 +185,7 @@ func TestAMissingLocalLinkIsKeptFlaggedAndNoted(t *testing.T) {
 	notes := filepath.Join(t.TempDir(), "notes")
 	mkdirs(t, notes)
 	s.AddLink(web.ID, notes, "", "")
-	ref := real(t, notes)
+	ref := resolved(t, notes)
 	if err := os.RemoveAll(notes); err != nil {
 		t.Fatal(err)
 	}

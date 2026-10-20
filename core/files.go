@@ -109,7 +109,7 @@ func walkNewest(dir string, now time.Time, ignore []string) (w workState) {
 			}
 			return nil
 		}
-		if info, err := d.Info(); err == nil {
+		if info, err := d.Info(); err == nil && !slices.Contains(ignore, path) {
 			w.see(info.ModTime(), now)
 		}
 		return nil
