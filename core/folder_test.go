@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -51,7 +53,8 @@ func TestUpgradingMakesEachProjectsFolderItsMainFolder(t *testing.T) {
 	if _, err := s.db.Exec(`DROP TABLE folders`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, len(migrations)-4)); err != nil {
+	before := slices.IndexFunc(migrations, func(m string) bool { return strings.HasPrefix(m, "CREATE TABLE folders") })
+	if _, err := s.db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, before)); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
@@ -114,6 +117,30 @@ func TestGivingAnIdeaAFolderMakesItTheMainFolder(t *testing.T) {
 		p = projectNamed(t, s, "habit tracker")
 		if want := []Folder{{Path: dir, Main: true}}; !reflect.DeepEqual(p.Folders, want) || p.Path != dir {
 			t.Fatalf("path %q, folders %+v", p.Path, p.Folders)
+		}
+	}
+}
+
+func TestAFolderAnOlderProzWroteIsPickedUpOnOpen(t *testing.T) {
+	dir, web, api := t.TempDir(), t.TempDir(), t.TempDir()
+	s := open(t, dir)
+	if err := s.AddProject(Project{Name: "web", Path: web}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddIdea("api"); err != nil {
+		t.Fatal(err)
+	}
+	// an older proz only knows projects.path
+	if _, err := s.db.Exec(`UPDATE projects SET path = CASE name WHEN 'web' THEN ? ELSE ? END`, api+"-moved", api); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	s = open(t, dir)
+	for name, want := range map[string]string{"web": api + "-moved", "api": api} {
+		p := projectNamed(t, s, name)
+		if len(p.Folders) != 1 || p.Folders[0].Path != want || !p.Folders[0].Main || p.Path != want {
+			t.Errorf("%s: path %q, folders %+v", name, p.Path, p.Folders)
 		}
 	}
 }

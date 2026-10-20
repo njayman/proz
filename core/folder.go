@@ -39,14 +39,49 @@ func (s *Store) folders() (map[int64][]Folder, error) {
 }
 
 // setMainFolder makes path the main folder of project id, replacing the old
-// main one; an empty path leaves it with no main folder. ponytail: replaces
-// only the main folder; the folder commands (#78) own adding the others.
+// main one; an empty path leaves it with no main folder. An unchanged main
+// folder is left as it is. ponytail: replaces only the main folder; the
+// folder commands (#78) own adding the others.
 func setMainFolder(db execer, id int64, path string, now time.Time) error {
-	if _, err := db.Exec(`DELETE FROM folders WHERE project_id = ? AND workspace_id = ? AND main = 1`, id, DefaultWorkspace); err != nil || path == "" {
+	if _, err := db.Exec(`DELETE FROM folders WHERE project_id = ? AND workspace_id = ? AND main = 1 AND path != ?`, id, DefaultWorkspace, path); err != nil || path == "" {
 		return err
 	}
-	_, err := db.Exec(`INSERT INTO folders (workspace_id, project_id, path, main, added_at) VALUES (?, ?, ?, 1, ?)`, DefaultWorkspace, id, path, now.Unix())
+	_, err := db.Exec(`INSERT INTO folders (workspace_id, project_id, path, main, added_at)
+		SELECT ?, ?, ?, 1, ? WHERE NOT EXISTS (SELECT 1 FROM folders WHERE project_id = ? AND workspace_id = ? AND main = 1)`,
+		DefaultWorkspace, id, path, now.Unix(), id, DefaultWorkspace)
 	return err
+}
+
+// syncFolders takes in a folder an older proz wrote to projects.path alone,
+// so mixing versions on one store never hides a project's folder.
+func (s *Store) syncFolders() error {
+	rows, err := s.db.Query(`SELECT p.id, p.path FROM projects p WHERE p.workspace_id = ? AND p.path != `+mainPath, DefaultWorkspace)
+	if err != nil {
+		return err
+	}
+	type stale struct {
+		id   int64
+		path string
+	}
+	var found []stale
+	for rows.Next() {
+		var f stale
+		if err := rows.Scan(&f.id, &f.path); err != nil {
+			rows.Close()
+			return err
+		}
+		found = append(found, f)
+	}
+	rows.Close() // release the single connection before writing
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, f := range found {
+		if err := setMainFolder(s.db, f.id, f.path, s.now()); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // missing reports whether the folder at path is gone or a parent was

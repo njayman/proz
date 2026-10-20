@@ -110,6 +110,10 @@ func Open(dir string, now func() time.Time) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := s.syncFolders(); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return s, nil
 }
 
