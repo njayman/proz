@@ -22,7 +22,24 @@ import (
 )
 
 // TestMain keeps tests away from the real ~/.claude session logs.
+// uiQueue holds what the view's background reads want to change on screen;
+// settle applies it on the test's goroutine, so tests never race the view.
+var uiQueue = make(chan func(), 100)
+
+// settle applies every change queued so far.
+func settle() {
+	for {
+		select {
+		case f := <-uiQueue:
+			f()
+		default:
+			return
+		}
+	}
+}
+
 func TestMain(m *testing.M) {
+	onUI = func(f func()) { uiQueue <- f }
 	dir, err := os.MkdirTemp("", "proz-claude")
 	if err != nil {
 		panic(err)
@@ -97,6 +114,7 @@ func must(t *testing.T, err error) {
 
 // press sends key where the driver would: the focused widget, else the canvas.
 func press(w fyne.Window, key fyne.KeyName) {
+	settle()
 	e := &fyne.KeyEvent{Name: key}
 	if f := w.Canvas().Focused(); f != nil {
 		f.TypedKey(e)
@@ -165,6 +183,7 @@ type label struct {
 // labels is every visible label on screen. The test driver cannot place
 // list rows, so positions are added up walking down from the content.
 func labels(w fyne.Window) []label {
+	settle()
 	var found []label
 	var walk func(o fyne.CanvasObject, origin fyne.Position)
 	walk = func(o fyne.CanvasObject, origin fyne.Position) {
@@ -378,7 +397,7 @@ func TestEnterAfterStatusesReturnStillOpensTheMainProgram(t *testing.T) {
 }
 
 // typeText types s where the keyboard is, as a person would.
-func typeText(w fyne.Window, s string) { test.Type(w.Canvas().Focused(), s) }
+func typeText(w fyne.Window, s string) { settle(); test.Type(w.Canvas().Focused(), s) }
 
 func TestTypingFiltersByNameAndEnterOpensTheMatch(t *testing.T) {
 	slowStatuses(t) // never returns: the keys must not wait on it
@@ -546,6 +565,7 @@ func TestSnoozeAWeekAndDropActThroughTheStoreAndTheListUpdates(t *testing.T) {
 
 // objects is everything the window draws, widgets and their parts.
 func objects(w fyne.Window) []fyne.CanvasObject {
+	settle()
 	var out []fyne.CanvasObject
 	var walk func(o fyne.CanvasObject)
 	walk = func(o fyne.CanvasObject) {

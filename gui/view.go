@@ -36,6 +36,10 @@ const listShare = 0.3
 // statusesOf reads every project's signals; tests swap in a slow one.
 var statusesOf = (*core.Store).Statuses
 
+// onUI runs f where the window may be changed; tests queue it instead, to
+// apply on their own goroutine.
+var onUI = fyne.Do
+
 // New fills w with the launcher over s: a filter box over the project list
 // on the left, the selected project on the right. Typing filters, Up and Down
 // move, Enter opens the selection with its main program and closes the
@@ -250,9 +254,10 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 	load = func() {
 		loads++
 		this := loads
+		read := statusesOf // picked here, so a test swapping it back cannot race this read
 		go func() {
-			sts, err := statusesOf(s)
-			fyne.Do(func() {
+			sts, err := read(s)
+			onUI(func() {
 				if this != loads {
 					return
 				}
