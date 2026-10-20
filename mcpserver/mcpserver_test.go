@@ -169,15 +169,15 @@ func TestAddLink(t *testing.T) {
 	if !res.IsError || !strings.Contains(res.Content[0].(*mcp.TextContent).Text, "brainmd") {
 		t.Fatalf("unknown host: want a tool error naming the choices, got %+v", res.Content)
 	}
-	var got map[string]any
+	var got, again map[string]any
 	call(t, cs, "add_link", map[string]any{"project": "web", "ref": "https://tasks.example.com/web", "provider": "other", "kind": "tracker"}, &got)
-	if want := map[string]any{"kind": "tracker", "provider": "web", "ref": "https://tasks.example.com/web", "missing": false}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("add_link: %v", got)
+	link := map[string]any{"kind": "tracker", "provider": "web", "ref": "https://tasks.example.com/web", "missing": false}
+	if links, _ := got["links"].([]any); len(links) != 1 || !reflect.DeepEqual(links[0], link) {
+		t.Fatalf("add_link returns the project with its links: %v", got)
 	}
-	var p struct{ Links []map[string]any }
-	call(t, cs, "get_project", map[string]any{"project": "web"}, &p)
-	if len(p.Links) != 1 || p.Links[0]["provider"] != "web" {
-		t.Fatalf("get_project links: %v", p.Links)
+	call(t, cs, "get_project", map[string]any{"project": "web"}, &again)
+	if !reflect.DeepEqual(got, again) {
+		t.Fatalf("add_link returns what get_project does:\n%v\n%v", got, again)
 	}
 }
 
