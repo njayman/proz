@@ -121,7 +121,7 @@ proz <path>                # name = basename(path)
 proz add <name>             # registers $PWD under <name>
 ```
 
-Both run non-interactively when there's no TTY (this shell): they save the project with no program/arguments and print a warning to stderr, rather than hanging on a picker. That's expected, not an error. If the user wants a program attached, tell them to run `proz add <name>` themselves in a terminal, or run `proz edit <name>` afterward.
+Both run non-interactively when there's no TTY (this shell): they save the project with no program/arguments and print a warning to stderr, rather than hanging on a picker. That's expected, not an error. If the folder is already a folder of another project, or a git worktree of one, it asks whether to track it as a separate project, prints `Not added.` and adds nothing unless the answer is yes; you have no terminal to answer it, so tell the user, and let them run it themselves if they do want a second project. If the user wants a program attached, tell them to run `proz add <name>` themselves in a terminal, or run `proz edit <name>` afterward.
 
 ## Edit / delete
 

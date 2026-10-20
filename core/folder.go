@@ -101,19 +101,8 @@ func missing(path string) bool {
 // adding a folder to an idea makes it a project.
 func (s *Store) AddFolder(id int64, dir string) error {
 	// ponytail: checked before the write; two agents adding one folder at once could both win
-	if owner, err := s.FolderOwner(dir); err == nil {
-		return fmt.Errorf("%s is already a folder of %s", dir, owner.Name)
-	} else if !errors.Is(err, ErrNotFound) {
+	if err := s.Claim(dir); err != nil {
 		return err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), gitLimit)
-	defer cancel()
-	for _, wt := range otherCheckouts(ctx, dir) {
-		if owner, err := s.FolderOwner(wt); err == nil {
-			return fmt.Errorf("%s and %s are checkouts of one git repository, and %s is a folder of %s; its worktrees count for it without being added", dir, wt, wt, owner.Name)
-		} else if !errors.Is(err, ErrNotFound) {
-			return err
-		}
 	}
 	return s.changeFolders(id, func(tx *sql.Tx) error {
 		_, err := tx.Exec(`INSERT INTO folders (workspace_id, project_id, path, main, added_at)
@@ -139,6 +128,40 @@ func (s *Store) changeFolders(id int64, change func(*sql.Tx) error) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// ClaimedError says dir already belongs to a project: it is one of Owner's
+// folders, or a worktree of Via, which is.
+type ClaimedError struct {
+	Dir, Via string // Via is empty when Dir is the folder itself
+	Owner    Project
+}
+
+func (e *ClaimedError) Error() string {
+	if e.Via == "" {
+		return fmt.Sprintf("%s is already a folder of %s", e.Dir, e.Owner.Name)
+	}
+	return fmt.Sprintf("%s and %s are checkouts of one git repository, and %s is a folder of %s; its worktrees count for it without being added", e.Dir, e.Via, e.Via, e.Owner.Name)
+}
+
+// Claim returns a *ClaimedError when dir is a folder of a project or a git
+// worktree of one, and nil when no project has it.
+func (s *Store) Claim(dir string) error {
+	if owner, err := s.FolderOwner(dir); err == nil {
+		return &ClaimedError{Dir: dir, Owner: owner}
+	} else if !errors.Is(err, ErrNotFound) {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), gitLimit)
+	defer cancel()
+	for _, wt := range otherCheckouts(ctx, dir) {
+		if owner, err := s.FolderOwner(wt); err == nil {
+			return &ClaimedError{Dir: dir, Via: wt, Owner: owner}
+		} else if !errors.Is(err, ErrNotFound) {
+			return err
+		}
+	}
+	return nil
 }
 
 // FolderOwner returns the project that has dir as one of its folders.
