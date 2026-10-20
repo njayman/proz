@@ -86,7 +86,7 @@ func (s *Store) ignored() ([]string, error) {
 }
 
 // Checkout is a place a project can be opened in: one of its folders, or
-// the same place in a worktree of one.
+// the same place in a worktree of one (see GLOSSARY.md).
 type Checkout struct {
 	Path       string
 	Main       bool
@@ -110,8 +110,8 @@ func (s *Store) Checkouts(p Project) ([]Checkout, error) {
 	places, _ := placesOf(ctx, p.Folders)
 	out := make([]Checkout, 0, len(places))
 	for _, pl := range places {
-		x := readPlace(ctx, pl, places, s.now(), ignore)
-		out = append(out, Checkout{Path: pl.path, Main: pl.main, Worktree: pl.worktree, LastActive: x.active})
+		seen := readPlace(ctx, pl, places, s.now(), ignore)
+		out = append(out, Checkout{Path: pl.path, Main: pl.main, Worktree: pl.worktree, LastActive: seen.active})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].LastActive.After(out[j].LastActive) })
 	return out, nil
@@ -132,6 +132,9 @@ func (s *Store) openIn(p Project, folder string) (string, error) {
 		if pl.real == want {
 			return pl.path, nil
 		}
+	}
+	if ctx.Err() != nil {
+		return "", fmt.Errorf("%s is not a folder of %s, and git was too slow to check its worktrees", folder, p.Name)
 	}
 	return "", fmt.Errorf("%s is not a folder or worktree of %s", folder, p.Name)
 }

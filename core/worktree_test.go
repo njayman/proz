@@ -152,8 +152,12 @@ func TestLaunchOpensInTheChosenFolderOrWorktreeAndRefusesOthers(t *testing.T) {
 			t.Fatalf("terminal in %q: got %v, %v", folder, cmd, err)
 		}
 	}
-	if _, err := s.Launch(app, t.TempDir(), "code", true); err == nil || !strings.Contains(err.Error(), "not a folder or worktree of app") {
+	stray := t.TempDir()
+	if _, err := s.Launch(app, stray, "code", true); err == nil || !strings.Contains(err.Error(), "not a folder or worktree of app") {
 		t.Fatalf("another folder: got %v", err)
+	}
+	if _, err := s.LaunchTerminal(app, stray, true); err == nil || !strings.Contains(err.Error(), "not a folder or worktree of app") {
+		t.Fatalf("a terminal in another folder: got %v", err)
 	}
 }
 

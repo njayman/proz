@@ -198,16 +198,16 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 			places, gone := placesOf(ctx, r.st.Folders)
 			x.missing = gone
 			for _, pl := range places {
-				p := readPlace(ctx, pl, places, now, ignore)
-				if p.hasGit && (!x.hasGit || p.active.After(gitActive)) {
-					x.g, x.hasGit, gitActive = p.g, true, p.active
+				seen := readPlace(ctx, pl, places, now, ignore)
+				if seen.hasGit && (!x.hasGit || seen.active.After(gitActive)) {
+					x.g, x.hasGit, gitActive = seen.g, true, seen.active
 				}
-				if p.work.when.After(x.work.when) {
-					x.work.when = p.work.when
+				if seen.work.when.After(x.work.when) {
+					x.work.when = seen.work.when
 				}
-				x.work.uncommitted += p.work.uncommitted
-				if p.hasCl && (!x.hasCl || p.cl.when.After(x.cl.when)) {
-					x.cl, x.hasCl = p.cl, true
+				x.work.uncommitted += seen.work.uncommitted
+				if seen.hasCl && (!x.hasCl || seen.cl.when.After(x.cl.when)) {
+					x.cl, x.hasCl = seen.cl, true
 				}
 			}
 			x.slow = ctx.Err() != nil

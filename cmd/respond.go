@@ -23,8 +23,8 @@ var resumeCmd = &cobra.Command{
 		"containing the current directory. --terminal opens a terminal in the\n" +
 		"project's folder instead: your shell here when run in a terminal, else\n" +
 		"a new terminal window. With several folders or worktrees it asks which,\n" +
-		"starting at the one worked in last; --folder opens an exact one, and\n" +
-		"without a terminal the main folder opens.",
+		"starting at the one worked in last (esc opens nothing); --folder opens\n" +
+		"an exact one, and without a terminal the main folder opens.",
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		p, err := resolveProject(args)
@@ -39,17 +39,24 @@ var resumeCmd = &cobra.Command{
 			return err
 		}
 		fmt.Println(st.Note.Full())
-		if p.Path == "" {
-			fmt.Fprintf(os.Stderr, "'%s' is an idea with no folder yet. Run 'proz add' in its folder to attach one.\n", p.Name)
-			return launch(p, "", "") // still counts as picking it back up
-		}
 		folder := resumeFolder
 		if folder != "" {
 			if folder, err = filepath.Abs(folder); err != nil {
 				return err
 			}
-		} else {
-			folder = chooseFolder(p)
+		}
+		if p.Path == "" {
+			if folder != "" { // an idea has no folder to open in
+				return launch(p, folder, "")
+			}
+			fmt.Fprintf(os.Stderr, "'%s' is an idea with no folder yet. Run 'proz add' in its folder to attach one.\n", p.Name)
+			return launch(p, "", "") // still counts as picking it back up
+		}
+		if folder == "" {
+			var ok bool
+			if folder, ok = chooseFolder(p); !ok {
+				return nil // the user backed out of the folder picker
+			}
 		}
 		if resumeTerminal {
 			return launchTerminal(p, folder)

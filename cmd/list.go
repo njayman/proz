@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/njayman/proz/core"
 	"github.com/spf13/cobra"
 )
@@ -106,7 +107,11 @@ var listCmd = &cobra.Command{
 
 		program := chooseProgram(*selected)
 
-		if err := launch(*selected, chooseFolder(*selected), program); err != nil {
+		folder, ok := chooseFolder(*selected)
+		if !ok {
+			return
+		}
+		if err := launch(*selected, folder, program); err != nil {
 			fmt.Fprintf(os.Stderr, "Error launching %s: %v\n", program, err)
 		}
 
@@ -159,11 +164,15 @@ func applyListOptions(projects []Project) ([]Project, error) {
 
 // chooseFolder is where to open p: with several folders or worktrees and a
 // terminal, the one the user picks, starting at the one worked in last;
-// otherwise, or if they cancel, "" for the main folder.
-func chooseFolder(p Project) string {
+// otherwise "" for the main folder. ok is false when the user backs out.
+func chooseFolder(p Project) (folder string, ok bool) {
+	if len(p.Folders) == 0 || !term.IsTerminal(os.Stdin.Fd()) { // agents and launchers never pay for the scan
+		return "", true
+	}
 	var checkouts []core.Checkout
-	if len(p.Folders) == 0 || withStore(func(s *core.Store) (err error) { checkouts, err = s.Checkouts(p); return err }) != nil || len(checkouts) < 2 {
-		return ""
+	// ponytail: a store error opens the main folder; the launch that follows reports it
+	if withStore(func(s *core.Store) (err error) { checkouts, err = s.Checkouts(p); return err }) != nil || len(checkouts) < 2 {
+		return "", true
 	}
 	labels := make([]string, len(checkouts))
 	for i, c := range checkouts {
@@ -176,10 +185,13 @@ func chooseFolder(p Project) string {
 		}
 	}
 	choice, err := runSelectPicker("Choose a folder to open", labels)
-	if err != nil || choice < 0 {
-		return ""
+	if err != nil {
+		return "", true
 	}
-	return checkouts[choice].Path
+	if choice < 0 {
+		return "", false
+	}
+	return checkouts[choice].Path, true
 }
 
 // chooseProgram is the project's program, asking which when it has several.

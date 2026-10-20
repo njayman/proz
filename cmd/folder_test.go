@@ -131,22 +131,26 @@ func TestResumeOpensInTheChosenFolder(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	real := func(p string) string { r, _ := filepath.EvalSymlinks(p); return r }
+	resolved := func(p string) string { r, _ := filepath.EvalSymlinks(p); return r }
 
 	run(t, "resume", "web") // no terminal here: the main folder, no picker
-	if got := ranIn(); got != real(main) {
+	if got := ranIn(); got != resolved(main) {
 		t.Fatalf("default: ran in %s, want %s", got, main)
 	}
 	run(t, "resume", "web", "--folder", docs)
-	if got := ranIn(); got != real(docs) {
+	if got := ranIn(); got != resolved(docs) {
 		t.Fatalf("--folder: ran in %s, want %s", got, docs)
 	}
 	run(t, "config", "terminal", rec)
 	run(t, "resume", "web", "--folder", docs, "--terminal")
-	if got := ranIn(); got != real(docs) {
+	if got := ranIn(); got != resolved(docs) {
 		t.Fatalf("--folder --terminal: ran in %s, want %s", got, docs)
 	}
 	if err := execute("resume", "web", "--folder", stray); err == nil || !strings.Contains(err.Error(), "not a folder or worktree of web") {
 		t.Fatalf("another folder: got %v", err)
+	}
+	run(t, "idea", "someday")
+	if err := execute("resume", "someday", "--folder", docs); err == nil || !strings.Contains(err.Error(), "not a folder or worktree of someday") {
+		t.Fatalf("--folder on an idea: got %v", err)
 	}
 }

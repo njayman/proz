@@ -23,6 +23,9 @@ A folder proz can no longer find, such as one on an unplugged drive. It stays wi
 **Worktree**:
 An extra checkout of a git folder. proz finds worktrees from git and never stores them; their activity counts for the folder's project.
 
+**Checkout**:
+Any place a project can be opened in: one of its folders, or the same place in a worktree of one. Resuming asks which when there are several.
+
 **Workspace**:
 The internal scope every record belongs to. Never shown to people.
 
