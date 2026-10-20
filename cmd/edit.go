@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/njayman/proz/core"
 	"github.com/spf13/cobra"
 )
 
@@ -101,8 +102,8 @@ func editWithFlags(name string, rename, programs bool) error {
 		return err
 	}
 	if rename {
-		if p.Name = strings.Join(strings.Fields(editName), " "); p.Name == "" {
-			return errors.New("--name is empty")
+		if p.Name, err = core.ProjectName(editName); err != nil {
+			return err
 		}
 	}
 	if programs {

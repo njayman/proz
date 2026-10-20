@@ -1,7 +1,6 @@
 package gui
 
 import (
-	"errors"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -26,10 +25,10 @@ func setup(p core.Project, save func(core.Project) error, back func()) (fyne.Can
 	problem.Importance = widget.DangerImportance
 	problem.Hide()
 	do := func() {
-		p.Name = strings.Join(strings.Fields(name.Text), " ")
+		var err error
+		p.Name, err = core.ProjectName(name.Text)
 		p.Programs = strings.Fields(programs.Text)
-		err := errors.New("a project needs a name")
-		if p.Name != "" {
+		if err == nil {
 			err = save(p)
 		}
 		if err != nil {

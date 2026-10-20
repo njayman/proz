@@ -199,38 +199,26 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 	// saved writes p through the store and goes home with it selected,
 	// keeping the signals already in until load brings fresh ones.
 	saved := func(p core.Project) error {
-		add := p.ID == 0
 		var err error
-		if add {
-			err = s.AddProject(p)
+		if p.ID == 0 {
+			p, err = s.NewProject(p)
 		} else {
 			err = s.UpdateProject(p)
 		}
 		if err != nil {
-			return err
+			return err // nothing written: setup stays open to try again
 		}
+		defer goHome() // written: a second Save must never add it twice
 		ps, err := s.Projects()
 		if err != nil {
-			return err
+			dialog.ShowError(err, w)
+			return nil
 		}
-		if add {
-			p.ID = ps[len(ps)-1].ID // ponytail: the newest is ours; an agent adding one in the same instant could swap them
-		}
-		had := map[int64]core.Status{}
-		for _, st := range all {
-			had[st.ID] = st
-		}
-		projects, all = ps, make([]core.Status, len(ps))
-		for i, q := range ps {
-			all[i] = had[q.ID]
-			all[i].Project = q
-		}
-		core.RemindOrder(all)
+		projects, all = ps, withProjects(all, ps)
 		filter.SetText("") // so it is listed
 		shown, picked = all, true
 		list.Refresh()
 		choose(slices.IndexFunc(shown, func(st core.Status) bool { return st.ID == p.ID }))
-		goHome()
 		return nil
 	}
 	showSetup = func(p core.Project) {
@@ -241,8 +229,12 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 	newProject := func() { showSetup(core.Project{}) }
 	ctrl[fyne.KeyComma] = showSettings
 	ctrl[fyne.KeyN] = newProject
-	for k, do := range ctrl { // for views without the filter box
-		w.Canvas().AddShortcut(&desktop.CustomShortcut{KeyName: k, Modifier: fyne.KeyModifierShortcutDefault}, func(fyne.Shortcut) { do() })
+	for k, do := range ctrl { // for home when the filter box lost the keys
+		w.Canvas().AddShortcut(&desktop.CustomShortcut{KeyName: k, Modifier: fyne.KeyModifierShortcutDefault}, func(fyne.Shortcut) {
+			if w.Content() == home { // never from setup, where they would drop the edits
+				do()
+			}
+		})
 	}
 
 	// open launches the selected project the way given and closes the window.
@@ -423,6 +415,22 @@ func stateWord(st core.Status) string {
 		return "idea, " + word
 	}
 	return word
+}
+
+// withProjects is ps as statuses in remind order, each keeping the signals
+// it had in sts until fresh ones are read.
+func withProjects(sts []core.Status, ps []core.Project) []core.Status {
+	had := map[int64]core.Status{}
+	for _, st := range sts {
+		had[st.ID] = st
+	}
+	out := make([]core.Status, len(ps))
+	for i, p := range ps {
+		out[i] = had[p.ID]
+		out[i].Project = p
+	}
+	core.RemindOrder(out)
+	return out
 }
 
 // wayOption is a way to open a project, as the launcher names it.

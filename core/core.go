@@ -152,7 +152,7 @@ func (s *Store) importJSON() error {
 			return err
 		}
 		for _, p := range legacy {
-			if err := insertProject(tx, p, s.now()); err != nil {
+			if _, err := insertProject(tx, p, s.now()); err != nil {
 				return err
 			}
 		}
@@ -210,17 +210,27 @@ func (s *Store) importOnce(file string, load func(*sql.Tx, []byte) error) error 
 }
 
 func (s *Store) AddProject(p Project) error {
-	return insertProject(s.db, p, s.now())
+	_, err := s.NewProject(p)
+	return err
+}
+
+// NewProject adds p and returns it with the ID the store gave it.
+func (s *Store) NewProject(p Project) (Project, error) {
+	res, err := insertProject(s.db, p, s.now())
+	if err != nil {
+		return p, err
+	}
+	p.ID, err = res.LastInsertId()
+	return p, err
 }
 
 type execer interface {
 	Exec(string, ...any) (sql.Result, error)
 }
 
-func insertProject(db execer, p Project, now time.Time) error {
-	_, err := db.Exec(`INSERT INTO projects (workspace_id, name, path, programs, arguments, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+func insertProject(db execer, p Project, now time.Time) (sql.Result, error) {
+	return db.Exec(`INSERT INTO projects (workspace_id, name, path, programs, arguments, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
 		DefaultWorkspace, p.Name, p.Path, encode(p.Programs), encode(p.Arguments), now.Unix())
-	return err
 }
 
 var ErrNotFound = errors.New("project not found")

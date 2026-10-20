@@ -109,6 +109,18 @@ func TestCancelOrEscLeavesSetupWithoutChanges(t *testing.T) {
 	}
 }
 
+func TestCtrlKeysInSetupNeverThrowAwayTheEdits(t *testing.T) {
+	w, _, _, _ := launcherWith(t)
+	shortcut(w, fyne.KeyN)
+	typeText(w, "half typed")
+	for _, k := range []fyne.KeyName{fyne.KeyComma, fyne.KeyN} {
+		shortcut(w, k)
+		if e := entry(t, w, "Name"); e.Text != "half typed" || showing(w, "Reminders") {
+			t.Fatalf("Ctrl+%s in setup: %q, screen %q", k, e.Text, texts(w))
+		}
+	}
+}
+
 func TestSetupNeedsANameAndStaysOpenUntilItHasOne(t *testing.T) {
 	w, s, _, _ := launcherWith(t)
 	shortcut(w, fyne.KeyN)
