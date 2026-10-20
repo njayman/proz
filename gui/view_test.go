@@ -578,6 +578,259 @@ func find[T fyne.CanvasObject](t *testing.T, w fyne.Window, match func(T) bool) 
 	return none
 }
 
+// shortcut presses Ctrl and key, as the driver would: to the focused
+// widget, else to the window.
+func shortcut(w fyne.Window, key fyne.KeyName) {
+	s := &desktop.CustomShortcut{KeyName: key, Modifier: fyne.KeyModifierShortcutDefault}
+	if f, ok := w.Canvas().Focused().(fyne.Shortcutable); ok {
+		f.TypedShortcut(s)
+	} else if h, ok := w.Canvas().(fyne.Shortcutable); ok {
+		h.TypedShortcut(s)
+	}
+}
+
+// showing says whether every one of want is on screen.
+func showing(w fyne.Window, want ...string) bool {
+	got := texts(w)
+	for _, s := range want {
+		if !slices.Contains(got, s) {
+			return false
+		}
+	}
+	return true
+}
+
+var settingsGroups = []string{"Reminders", "Features", "Email", "Launching"}
+
+func TestCtrlCommaOrSettingsOpensSettingsInPlaceAndEscOrBackReturnsHome(t *testing.T) {
+	slowStatuses(t)
+	w, _, closed := launcher(t, core.Project{Name: "web", Path: "/src/web"})
+
+	shortcut(w, fyne.KeyComma)
+	if !showing(w, settingsGroups...) || showing(w, "web") {
+		t.Fatalf("Ctrl+, shows settings in place of home: %q", texts(w))
+	}
+	press(w, fyne.KeyEscape)
+	if !showing(w, "web") || showing(w, "Reminders") || *closed {
+		t.Fatalf("Esc returns home: closed %v, %q", *closed, texts(w))
+	}
+	if _, ok := w.Canvas().Focused().(*filterBox); !ok {
+		t.Fatal("home gives the keys back to the filter box")
+	}
+
+	test.Tap(button(t, w, "Settings"))
+	if !showing(w, settingsGroups...) {
+		t.Fatalf("Settings shows settings: %q", texts(w))
+	}
+	test.Tap(find(t, w, func(b *widget.Button) bool { return b.Icon == theme.NavigateBackIcon() }))
+	if !showing(w, "web") || *closed {
+		t.Fatalf("back returns home: %q", texts(w))
+	}
+	if size := w.Canvas().Size(); size != fyne.NewSize(720, 480) {
+		t.Fatalf("the window resized to %v", size)
+	}
+}
+
+// settingsOver opens the settings view over a temp store that setup fills,
+// returning the window and the store.
+func settingsOver(t *testing.T, setup func(*core.Store)) (fyne.Window, *core.Store) {
+	t.Helper()
+	slowStatuses(t)
+	var s *core.Store
+	now := t0
+	w, _, _ := launcherOver(t, nil, &now, func(st *core.Store) { s = st; setup(s) })
+	shortcut(w, fyne.KeyComma)
+	return w, s
+}
+
+// entry is the text box on screen whose placeholder is hint.
+func entry(t *testing.T, w fyne.Window, hint string) *escEntry {
+	t.Helper()
+	return find(t, w, func(e *escEntry) bool { return e.PlaceHolder == hint })
+}
+
+func TestQuietAfterAppliesAsItIsTyped(t *testing.T) {
+	w, s := settingsOver(t, func(s *core.Store) { must(t, s.SetStaleThreshold(10*24*time.Hour)) })
+	days := entry(t, w, "7")
+	if days.Text != "10" {
+		t.Fatalf("shows the saved days: %q", days.Text)
+	}
+	days.SetText("14")
+	if d, err := s.StaleThreshold(); err != nil || d != 14*24*time.Hour {
+		t.Fatalf("saved %v, %v", d, err)
+	}
+	days.SetText("0")
+	if d, _ := s.StaleThreshold(); d != 14*24*time.Hour || !slices.ContainsFunc(texts(w), func(s string) bool { return strings.Contains(s, "whole days") }) {
+		t.Fatalf("0 days is refused and says why: saved %v, screen %q", d, texts(w))
+	}
+}
+
+// on reads module m from s.
+func on(t *testing.T, s *core.Store, m core.Module) bool {
+	t.Helper()
+	v, err := s.ModuleOn(m)
+	must(t, err)
+	return v
+}
+
+// check is the check box on screen labelled text.
+func check(t *testing.T, w fyne.Window, text string) *escCheck {
+	t.Helper()
+	return find(t, w, func(c *escCheck) bool { return c.Text == text })
+}
+
+func TestFeaturesSwitchModulesAtOnce(t *testing.T) {
+	removed := 0
+	was := removeAutostart
+	removeAutostart = func() error { removed++; return nil }
+	t.Cleanup(func() { removeAutostart = was })
+	w, s := settingsOver(t, func(*core.Store) {})
+
+	for _, c := range []struct {
+		label string
+		m     core.Module
+	}{{"Notifications", core.ModuleNotifications}, {"Tray icon", core.ModuleTray}, {"Last agent prompt in notes", core.ModulePrompts}} {
+		before := on(t, s, c.m)
+		if check(t, w, c.label).Checked != before {
+			t.Fatalf("%s shows %v, saved %v", c.label, !before, before)
+		}
+		test.Tap(check(t, w, c.label))
+		if on(t, s, c.m) == before {
+			t.Fatalf("%s: still %v after a tap", c.label, before)
+		}
+	}
+	if removed != 0 {
+		t.Fatalf("the tray switched on keeps its login item: removed %d times", removed)
+	}
+	test.Tap(check(t, w, "Tray icon")) // off again
+	if removed != 1 || on(t, s, core.ModuleTray) {
+		t.Fatalf("the tray switched off must not start at login either: removed %d times", removed)
+	}
+
+	for _, label := range []string{"Email digest", "Brain notes"} { // each needs setting up first
+		test.Tap(check(t, w, label))
+		if c := check(t, w, label); c.Checked || on(t, s, core.ModuleEmail) || on(t, s, core.ModuleBrain) {
+			t.Fatalf("%s: shown %v with nothing set up", label, c.Checked)
+		}
+	}
+	if !slices.ContainsFunc(texts(w), func(s string) bool { return strings.Contains(s, "brain folder") }) {
+		t.Fatalf("says why: %q", texts(w))
+	}
+}
+
+// weekly is the weekly email menu on screen.
+func weekly(t *testing.T, w fyne.Window) *escSelect {
+	t.Helper()
+	return find(t, w, func(*escSelect) bool { return true })
+}
+
+var smtp = core.SMTP{Host: "smtp.example.com", Port: 587, From: "me@example.com", To: "me@example.com"}
+
+func TestTheWeeklyEmailIsADayOrOff(t *testing.T) {
+	w, s := settingsOver(t, func(s *core.Store) {
+		must(t, s.SetSMTP(smtp))
+		must(t, s.SetModule(core.ModuleEmail, true))
+	})
+	if got := weekly(t, w).Selected; got != "Monday" {
+		t.Fatalf("shows the saved day: %q", got)
+	}
+	weekly(t, w).SetSelected("Friday")
+	if d, err := s.DigestDay(); err != nil || d != time.Friday || !on(t, s, core.ModuleEmail) {
+		t.Fatalf("Friday: saved %v, %v, email %v", d, err, on(t, s, core.ModuleEmail))
+	}
+	weekly(t, w).SetSelected("Off")
+	if on(t, s, core.ModuleEmail) || check(t, w, "Email digest").Checked {
+		t.Fatal("Off switches email off, and the feature shows it")
+	}
+	weekly(t, w).SetSelected("Tuesday")
+	if d, _ := s.DigestDay(); d != time.Tuesday || !on(t, s, core.ModuleEmail) || !check(t, w, "Email digest").Checked {
+		t.Fatalf("a day switches email back on: %v", d)
+	}
+	test.Tap(check(t, w, "Email digest"))
+	if got := weekly(t, w).Selected; got != "Off" {
+		t.Fatalf("the feature switched off shows Off: %q", got)
+	}
+}
+
+func TestAWeeklyEmailDayWithNoMailServerSaysSoAndStaysOff(t *testing.T) {
+	w, s := settingsOver(t, func(*core.Store) {})
+	weekly(t, w).SetSelected("Friday")
+	if d, _ := s.DigestDay(); d != time.Monday || on(t, s, core.ModuleEmail) || weekly(t, w).Selected != "Off" {
+		t.Fatalf("saved %v, email %v, shown %q", d, on(t, s, core.ModuleEmail), weekly(t, w).Selected)
+	}
+	if !slices.ContainsFunc(texts(w), func(s string) bool { return strings.Contains(s, "SMTP") }) {
+		t.Fatalf("says why: %q", texts(w))
+	}
+}
+
+func TestTheMailServerSavesOnceItIsComplete(t *testing.T) {
+	w, s := settingsOver(t, func(*core.Store) {})
+	if got := entry(t, w, "587").Text; got != "587" {
+		t.Fatalf("a new mail server starts on port 587: %q", got)
+	}
+	test.Type(entry(t, w, "smtp.example.com"), "smtp.example.com")
+	if _, ok, _ := s.SMTP(); ok || !slices.ContainsFunc(texts(w), func(s string) bool { return strings.Contains(s, "Mail server not saved") }) {
+		t.Fatalf("saved without addresses, or did not say: %v, %q", ok, texts(w))
+	}
+	test.Type(entry(t, w, "Sender address"), "me@example.com")
+	test.Type(entry(t, w, "Your address"), "me@example.com")
+	test.Type(entry(t, w, "Password"), "s3cret")
+	got, ok, err := s.SMTP()
+	if want := (core.SMTP{Host: "smtp.example.com", Port: 587, Password: "s3cret", From: "me@example.com", To: "me@example.com"}); err != nil || !ok || got != want {
+		t.Fatalf("saved %+v, %v, %v", got, ok, err)
+	}
+	if slices.ContainsFunc(texts(w), func(s string) bool { return strings.Contains(s, "not saved") }) {
+		t.Fatalf("the problem clears once saved: %q", texts(w))
+	}
+	entry(t, w, "587").SetText("465")
+	if got, _, _ := s.SMTP(); got.Port != 465 {
+		t.Fatalf("port: %d", got.Port)
+	}
+}
+
+func TestASavedMailServerShowsAsSaved(t *testing.T) {
+	w, _ := settingsOver(t, func(s *core.Store) { must(t, s.SetSMTP(smtp)) })
+	if got := entry(t, w, "smtp.example.com").Text; got != smtp.Host {
+		t.Fatalf("host: %q", got)
+	}
+	if got := entry(t, w, "Your address").Text; got != smtp.To {
+		t.Fatalf("to: %q", got)
+	}
+}
+
+func TestTheTerminalOverrideAppliesAsItIsTypedAndEmptyDetects(t *testing.T) {
+	w, s := settingsOver(t, func(*core.Store) {})
+	test.Type(entry(t, w, "Detect"), "wezterm")
+	if got, err := s.Terminal(); err != nil || got != "wezterm" {
+		t.Fatalf("saved %q, %v", got, err)
+	}
+	entry(t, w, "Detect").SetText("")
+	if got, _ := s.Terminal(); got != "" {
+		t.Fatalf("empty detects again: %q", got)
+	}
+}
+
+func TestEscFromATextBoxCheckBoxOrMenuInSettingsReturnsHome(t *testing.T) {
+	w, _ := settingsOver(t, func(s *core.Store) { must(t, s.AddProject(core.Project{Name: "web", Path: "/src/web"})) })
+	w.Canvas().Focus(entry(t, w, "Detect"))
+	press(w, fyne.KeyEscape)
+	if !showing(w, "web") {
+		t.Fatalf("Esc in a text box: %q", texts(w))
+	}
+	shortcut(w, fyne.KeyComma)
+	test.Tap(check(t, w, "Notifications"))
+	press(w, fyne.KeyEscape)
+	if !showing(w, "web") {
+		t.Fatalf("Esc after a tap on a check box: %q", texts(w))
+	}
+	shortcut(w, fyne.KeyComma)
+	w.Canvas().Focus(weekly(t, w))
+	press(w, fyne.KeyEscape)
+	if !showing(w, "web") {
+		t.Fatalf("Esc on the weekly email menu: %q", texts(w))
+	}
+}
+
 func TestEnterOnAnIdeaOpensNothing(t *testing.T) {
 	slowStatuses(t)
 	w, got, closed := launcher(t, core.Project{Name: "someday"})

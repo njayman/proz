@@ -23,3 +23,4 @@ Drive it with `xdotool type`/`xdotool key`, take screenshots with `import -windo
 1. The list shows at once; quiet projects are marked and come first.
 2. Typing filters, Up and Down move the selection, Enter opens and closes the window, Esc clears the filter and a second Esc closes it.
 3. The Dark check box switches the look and the choice survives a restart.
+4. Ctrl+, (or Settings) shows the settings in place of the list; a change shows at once in `proz config` (such as `proz config stale-days`); Esc, even after a click on a check box, or Back returns to the list, and the window never changes size.

@@ -39,8 +39,8 @@ var statusesOf = (*core.Store).Statuses
 // New fills w with the launcher over s: a filter box over the project list
 // on the left, the selected project on the right. Typing filters, Up and Down
 // move, Enter opens the selection with its main program and closes the
-// window, Esc clears the filter and then closes. The list shows at once;
-// signals fill in as they come.
+// window, Esc clears the filter and then closes. Ctrl+, shows the settings
+// in its place. The list shows at once; signals fill in as they come.
 func New(w fyne.Window, s *core.Store, launch Launch) {
 	projects, err := s.Projects()
 	if err != nil {
@@ -125,7 +125,8 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 		}
 		render()
 	}
-	filter := newFilterBox(w.Canvas())
+	ctrl := map[fyne.KeyName]func(){} // the window's Ctrl keys, filled in below
+	filter := newFilterBox(ctrl)
 	// refilter shows the projects matching the filter, keeping the selected
 	// one selected when it still matches; else the top one.
 	refilter := func() {
@@ -171,9 +172,28 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 			w.Close()
 		}
 	}
-	// ponytail: Ctrl+N and Ctrl+, are bound but do nothing until setup (#93) and settings (#92) exist
-	for _, k := range []fyne.KeyName{fyne.KeyN, fyne.KeyComma} {
-		w.Canvas().AddShortcut(&desktop.CustomShortcut{KeyName: k, Modifier: fyne.KeyModifierShortcutDefault}, func(fyne.Shortcut) {})
+	var home fyne.CanvasObject
+	var load func()
+	goHome := func() {
+		w.Canvas().SetOnTypedKey(nil)
+		w.SetContent(home)
+		w.Canvas().Focus(filter)
+		load() // a setting may have changed what is quiet
+	}
+	// show replaces home with view, which leaves by goHome; so does Esc.
+	show := func(view fyne.CanvasObject) {
+		w.SetContent(view)
+		w.Canvas().SetOnTypedKey(func(e *fyne.KeyEvent) {
+			if e.Name == fyne.KeyEscape {
+				goHome()
+			}
+		})
+	}
+	showSettings := func() { show(settings(s, goHome)) }
+	ctrl[fyne.KeyComma] = showSettings
+	ctrl[fyne.KeyN] = func() {} // ponytail: Ctrl+N does nothing until setup (#93) exists
+	for k, do := range ctrl { // for views without the filter box
+		w.Canvas().AddShortcut(&desktop.CustomShortcut{KeyName: k, Modifier: fyne.KeyModifierShortcutDefault}, func(fyne.Shortcut) { do() })
 	}
 
 	// open launches the selected project the way given and closes the window.
@@ -185,7 +205,7 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 		}
 		w.Close()
 	}
-	load := func() {
+	load = func() {
 		go func() {
 			sts, err := statusesOf(s)
 			fyne.Do(func() {
@@ -222,21 +242,23 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 
 	split := container.NewHSplit(container.NewBorder(filter, nil, nil, nil, list), container.NewVScroll(container.NewPadded(detail)))
 	split.Offset = listShare
-	w.SetContent(container.NewBorder(container.NewHBox(layout.NewSpacer(), darkToggle(w, s)), nil, nil, nil, split))
+	toolbar := container.NewHBox(layout.NewSpacer(), darkToggle(w, s), widget.NewButtonWithIcon("Settings", theme.SettingsIcon(), showSettings))
+	home = container.NewBorder(toolbar, nil, nil, nil, split)
+	w.SetContent(home)
 	choose(0) // once the filter box is on the canvas, so it can take the focus
 	w.Canvas().Focus(filter)
 }
 
 // filterBox is the filter entry. It hands the keys that move and open to
-// onKey, so the cursor stays in it, and passes shortcuts to the window.
+// onKey, so the cursor stays in it, and the window's Ctrl keys to ctrl.
 type filterBox struct {
 	widget.Entry
-	window fyne.Canvas
-	onKey  func(fyne.KeyName)
+	onKey func(fyne.KeyName)
+	ctrl  map[fyne.KeyName]func()
 }
 
-func newFilterBox(window fyne.Canvas) *filterBox {
-	f := &filterBox{window: window}
+func newFilterBox(ctrl map[fyne.KeyName]func()) *filterBox {
+	f := &filterBox{ctrl: ctrl}
 	f.ExtendBaseWidget(f)
 	f.PlaceHolder = "Filter"
 	return f
@@ -252,10 +274,8 @@ func (f *filterBox) TypedKey(e *fyne.KeyEvent) {
 }
 
 func (f *filterBox) TypedShortcut(s fyne.Shortcut) {
-	if c, ok := s.(*desktop.CustomShortcut); ok && (c.KeyName == fyne.KeyN || c.KeyName == fyne.KeyComma) {
-		if h, ok := f.window.(interface{ TypedShortcut(fyne.Shortcut) }); ok { // Ctrl+N and Ctrl+, belong to the window
-			h.TypedShortcut(s)
-		}
+	if c, ok := s.(*desktop.CustomShortcut); ok && c.Modifier == fyne.KeyModifierShortcutDefault && f.ctrl[c.KeyName] != nil {
+		f.ctrl[c.KeyName]()
 		return
 	}
 	f.Entry.TypedShortcut(s) // its own word editing, such as Ctrl+Backspace
