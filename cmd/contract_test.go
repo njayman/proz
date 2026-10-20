@@ -66,6 +66,13 @@ func TestListJSONContract(t *testing.T) {
   {
     "name": "web",
     "path": "/web",
+    "folders": [
+      {
+        "path": "/web",
+        "main": true,
+        "missing": true
+      }
+    ],
     "programs": [
       "code",
       "claude"
@@ -77,11 +84,25 @@ func TestListJSONContract(t *testing.T) {
   {
     "name": "notes",
     "path": "/notes",
+    "folders": [
+      {
+        "path": "/notes",
+        "main": true,
+        "missing": true
+      }
+    ],
     "arguments": []
   },
   {
     "name": "legacy",
     "path": "/old",
+    "folders": [
+      {
+        "path": "/old",
+        "main": true,
+        "missing": true
+      }
+    ],
     "programs": [
       "nvim"
     ],
@@ -112,6 +133,13 @@ func TestNudgesJSONContract(t *testing.T) {
   {
     "name": "web",
     "path": "/web",
+    "folders": [
+      {
+        "path": "/web",
+        "main": true,
+        "missing": true
+      }
+    ],
     "last_activity": "2026-10-01T09:00:00Z",
     "quiet_days": 10,
     "quiet_seconds": 867600,
@@ -187,6 +215,13 @@ func TestStatusResolvesProjectFromWorkingDirectory(t *testing.T) {
 	want := `{
   "name": "web",
   "path": ` + jsonString(project) + `,
+  "folders": [
+    {
+      "path": ` + jsonString(project) + `,
+      "main": true,
+      "missing": false
+    }
+  ],
   "last_activity": "2026-10-01T09:00:00Z",
   "quiet_days": 3,
   "quiet_seconds": 259200,
@@ -228,6 +263,13 @@ func TestMilestoneByNameAndFromWorkingDirectory(t *testing.T) {
 	want := `{
   "name": "web",
   "path": ` + jsonString(project) + `,
+  "folders": [
+    {
+      "path": ` + jsonString(project) + `,
+      "main": true,
+      "missing": false
+    }
+  ],
   "last_activity": "2026-10-02T09:00:00Z",
   "quiet_days": 2,
   "quiet_seconds": 172800,
@@ -270,6 +312,7 @@ func TestIdeaCaptureResurfaces(t *testing.T) {
   {
     "name": "habit tracker app",
     "path": "",
+    "folders": [],
     "last_activity": "2026-10-01T09:00:00Z",
     "quiet_days": 8,
     "quiet_seconds": 691200,

@@ -17,7 +17,7 @@ If your client has the proz MCP tools (`list_projects`, `get_project`, `record_m
 proz list --json
 ```
 
-Prints every project as JSON: `name`, `path`, `programs` (array, may be empty), `arguments`.
+Prints every project as JSON: `name`, `path` (the main folder), `folders`, `programs` (array, may be empty), `arguments`. `folders` lists every folder behind the project as `{path, main, missing}`: exactly one is `main` whenever there are any, and `missing` is true when the folder is gone or a parent was replaced by a file (it is never removed for that). Every project shape in `--json` and MCP carries `folders`.
 
 Narrow results instead of piping through `grep`/`jq` for simple cases:
 
@@ -35,7 +35,7 @@ Flags compose, e.g. `proz list --json --filter api --sort name --limit 5`.
 proz nudges --json
 ```
 
-Prints projects that have gone quiet (stale): `name`, `path`, `last_activity` (RFC 3339, UTC), `quiet_days` (whole days, rounded down), `quiet_seconds`, `note` (the left-off note, one line per signal) and `short_note` (one line, truncated). `[]` means nothing is stale. Activity is the newest of: registration, the last launch through proz, the latest milestone, the last commit on a local branch that touches the project folder, the newest uncommitted file (outside git, the newest file; dependency and build folders never count), and the latest Claude Code session whose working directory is in the project. A project is stale after 7 quiet days by default; `proz config stale-days` prints the threshold and `proz config stale-days <n>` changes it. `--project <name>` reads or sets one project's override (`0` removes it). Only change thresholds when the user asks.
+Prints projects that have gone quiet (stale): `name`, `path`, `folders`, `last_activity` (RFC 3339, UTC), `quiet_days` (whole days, rounded down), `quiet_seconds`, `note` (the left-off note, one line per signal) and `short_note` (one line, truncated). `[]` means nothing is stale. Activity is the newest of: registration, the last launch through proz, the latest milestone, the last commit on a local branch that touches the project folder, the newest uncommitted file (outside git, the newest file; dependency and build folders never count), and the latest Claude Code session whose working directory is in the project. A project is stale after 7 quiet days by default; `proz config stale-days` prints the threshold and `proz config stale-days <n>` changes it. `--project <name>` reads or sets one project's override (`0` removes it). Only change thresholds when the user asks.
 
 Use this when the user asks what they were working on, what they forgot, or what to pick up next. Report the list; don't act on it.
 
@@ -87,7 +87,7 @@ Skip it for trivial edits, and don't record one per message. If the directory is
 proz idea "habit tracker that texts me"
 ```
 
-Saves the idea as a project with no folder, so it resurfaces like any project when it goes quiet (registration, launches and milestones count as activity). Capture one when the user floats an idea they are not acting on now ("someday I want to...", "remind me to build..."); record milestones on it by name as it develops. Ideas show `"path": ""` in JSON.
+Saves the idea as a project with no folder, so it resurfaces like any project when it goes quiet (registration, launches and milestones count as activity). Capture one when the user floats an idea they are not acting on now ("someday I want to...", "remind me to build..."); record milestones on it by name as it develops. Ideas show `"path": ""` and `"folders": []` in JSON.
 
 When the user later registers a folder named like the idea (`habit-tracker-that-texts-me`), `proz add` attaches the folder to the idea instead of creating a second project. Without a terminal it attaches by default.
 

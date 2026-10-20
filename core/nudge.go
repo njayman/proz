@@ -4,11 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -125,7 +123,11 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Query(`SELECT p.id, p.name, p.path,
+	folders, err := s.folders()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(`SELECT p.id, p.name, `+mainPath+`,
 			max(p.created_at, coalesce(p.last_launch, 0), coalesce(m.created_at, 0)), p.stale_seconds, m.text,
 			p.snoozed_until, p.snoozed_at, p.dropped_at, p.notified_at
 		FROM projects p
@@ -151,6 +153,7 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 			rows.Close()
 			return nil, err
 		}
+		r.st.Folders = folders[r.st.ID]
 		found = append(found, r)
 	}
 	rows.Close() // release the single connection before running git
@@ -194,9 +197,7 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 			path, x := r.st.Path, &sig[i]
 			x.g, x.hasGit = readGit(ctx, path)
 			if path != "" {
-				_, err := os.Stat(path)
-				// gone, or a parent replaced by a file; permission denied is not missing
-				x.missing = errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
+				x.missing = missing(path)
 				if !x.missing {
 					x.work = readWork(ctx, path, now, ignore)
 				}
