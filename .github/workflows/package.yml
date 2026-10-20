@@ -1,0 +1,55 @@
+name: Package
+
+# The packaging check: build every installer in snapshot mode (publish
+# nothing), then install and remove each one on a clean machine.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        # The desktop build needs cgo, so each architecture builds natively.
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install the launcher's build headers and nfpm
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.48.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Build the .deb, .rpm and Arch packages
+        run: scripts/package-linux.sh
+
+      - name: Install and remove them in clean containers
+        run: scripts/check-linux-package.sh dist/*.deb dist/*.rpm dist/*.pkg.tar.zst
+
+      - name: The plain build stays cgo-free
+        run: |
+          CGO_ENABLED=0 go build -trimpath -tags tray -o dist/plain/proz .
+          dist/plain/proz --version
+
+      - name: Upload the packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages-${{ runner.arch }}
+          path: |
+            dist/*.deb
+            dist/*.rpm
+            dist/*.pkg.tar.zst

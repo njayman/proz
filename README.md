@@ -20,6 +20,15 @@ Or build from source:
 go install github.com/njayman/proz@latest
 ```
 
+Linux packages (`.deb`, `.rpm`, Arch) hold the desktop build: the launcher window (`proz gui`), the tray and the CLI, plus a "proz" entry in the app menu. Build them for your machine's architecture with [nfpm](https://nfpm.goreleaser.com) and the launcher's build headers (on Debian and Ubuntu: `gcc libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev`), then install one with your package manager:
+
+```bash
+scripts/package-linux.sh            # writes dist/proz_*.deb, dist/proz-*.rpm, dist/proz-*.pkg.tar.zst
+sudo apt install ./dist/proz_*.deb  # or: sudo dnf install ./dist/proz-*.rpm, sudo pacman -U dist/proz-*.pkg.tar.zst
+```
+
+Removing the package keeps your projects and settings. `proz --version` prints the installed version.
+
 ## Quick start
 
 ```bash
@@ -198,7 +207,7 @@ The last 4 programs picked or launched sort to the top of the picker. Re-running
 
 ## Contributing
 
-Open a pull request. Before a release, run the manual end to end test, [`scripts/manual-test.sh`](scripts/manual-test.sh). It walks you through every feature in a throwaway config (the email stage needs [Mailtrap Local](https://github.com/mailtrap/mailtrap-local)) and writes a report; only its last stage touches your real setup, and it asks first.
+Open a pull request. Every pull request also runs the packaging check: it builds the Linux packages and installs and removes each one in a clean Debian, Ubuntu, Fedora and Arch container ([`scripts/check-linux-package.sh`](scripts/check-linux-package.sh), which needs docker). Before a release, run the manual end to end test, [`scripts/manual-test.sh`](scripts/manual-test.sh). It walks you through every feature in a throwaway config (the email stage needs [Mailtrap Local](https://github.com/mailtrap/mailtrap-local)) and writes a report; only its last stage touches your real setup, and it asks first.
 
 ## License
 

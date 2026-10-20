@@ -54,7 +54,7 @@ jobs:
       - name: Build Go binary
         run: |
           mkdir -p dist
-          go build -trimpath -tags tray -ldflags="-s -w" -o dist/${{ env.BINARY_NAME }} .
+          go build -trimpath -tags tray -ldflags="-s -w -X github.com/njayman/proz/cmd.version=${GITHUB_REF_NAME#v}" -o dist/${{ env.BINARY_NAME }} .
           ls -lh dist/
         env:
           GOOS: ${{ matrix.goos }}
