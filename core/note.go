@@ -47,8 +47,9 @@ func plural(format string, n int) string {
 	return s
 }
 
-// ProjectAt returns the project whose folder is dir or the nearest folder
-// above it, so agents and the CLI can work from anywhere inside a project.
+// ProjectAt returns the project with the deepest folder that is dir or
+// contains it, across every project's folders, so agents and the CLI can work
+// from anywhere inside a project.
 func (s *Store) ProjectAt(dir string) (Project, error) {
 	dir = resolve(dir)
 	projects, err := s.Projects()
@@ -58,15 +59,10 @@ func (s *Store) ProjectAt(dir string) (Project, error) {
 	var best Project
 	bestLen := -1
 	for _, p := range projects {
-		if p.Path == "" {
-			continue
-		}
-		root := resolve(p.Path)
-		if len(root) <= bestLen {
-			continue
-		}
-		if within(dir, root) {
-			best, bestLen = p, len(root)
+		for _, f := range p.Folders {
+			if root := resolve(f.Path); len(root) > bestLen && within(dir, root) {
+				best, bestLen = p, len(root)
+			}
 		}
 	}
 	if bestLen < 0 {

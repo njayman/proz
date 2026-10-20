@@ -91,6 +91,16 @@ Saves the idea as a project with no folder, so it resurfaces like any project wh
 
 When the user later registers a folder named like the idea (`habit-tracker-that-texts-me`), `proz add` attaches the folder to the idea instead of creating a second project. Without a terminal it attaches by default.
 
+## Folders
+
+```bash
+proz folder add [folder] [--project <name>] [--json]   # the current folder by default
+proz folder rm <folder> [--project <name>] [--json]
+proz folder main <folder> [--project <name>] [--json]
+```
+
+A project can have several folders (a backend and a frontend, drafts and research). `add` targets `--project`, or else the project containing the current folder; `rm` and `main` target `--project`, or else the project that has that folder. Folders may be relative. The first folder is the main folder (`path`); removing the main folder makes the next oldest the main one. Adding a folder to an idea makes it a project, and removing the last folder makes it an idea again; milestones and snoozes are kept. A folder belongs to one project: adding one another project has fails with an error naming that project. Folders may sit inside another project's folder; commands run in a folder use the project with the deepest folder containing it. `--json` prints the project as `list --json` does. `rm` never touches the folder on disk. Add or remove folders when the user asks, or when they tell you a project now lives in another place as well.
+
 ## Read the brain note
 
 ```bash

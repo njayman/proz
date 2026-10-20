@@ -244,7 +244,7 @@ func insertProject(db execer, p Project, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	return setMainFolder(db, id, p.Path, now)
+	return replaceMainFolder(db, id, p.Path, now)
 }
 
 var ErrNotFound = errors.New("project not found")
@@ -263,7 +263,7 @@ func (s *Store) UpdateProject(p Project) error {
 	if err := foundOrErr(res, err); err != nil {
 		return err
 	}
-	if err := setMainFolder(tx, p.ID, p.Path, s.now()); err != nil {
+	if err := replaceMainFolder(tx, p.ID, p.Path, s.now()); err != nil {
 		return err
 	}
 	return tx.Commit()

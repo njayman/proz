@@ -1,8 +1,11 @@
 package core
 
 import (
+	"database/sql"
 	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 	"syscall"
 	"time"
 )
@@ -38,12 +41,14 @@ func (s *Store) folders() (map[int64][]Folder, error) {
 	return out, rows.Err()
 }
 
-// setMainFolder makes path the main folder of project id, replacing the old
-// main one; an empty path leaves it with no main folder. An unchanged main
-// folder is left as it is. ponytail: replaces only the main folder; the
-// folder commands (#78) own adding the others.
-func setMainFolder(db execer, id int64, path string, now time.Time) error {
+// replaceMainFolder makes path the main folder of project id, removing the
+// old main one, as editing a project's path always has; an empty path leaves
+// it with no main folder. An unchanged main folder is left as it is.
+func replaceMainFolder(db execer, id int64, path string, now time.Time) error {
 	if _, err := db.Exec(`DELETE FROM folders WHERE project_id = ? AND workspace_id = ? AND main = 1 AND path != ?`, id, DefaultWorkspace, path); err != nil || path == "" {
+		return err
+	}
+	if _, err := db.Exec(`UPDATE folders SET main = 1 WHERE project_id = ? AND workspace_id = ? AND path = ?`, id, DefaultWorkspace, path); err != nil {
 		return err
 	}
 	_, err := db.Exec(`INSERT INTO folders (workspace_id, project_id, path, main, added_at)
@@ -77,7 +82,7 @@ func (s *Store) syncFolders() error {
 		return err
 	}
 	for _, f := range found {
-		if err := setMainFolder(s.db, f.id, f.path, s.now()); err != nil {
+		if err := replaceMainFolder(s.db, f.id, f.path, s.now()); err != nil {
 			return err
 		}
 	}
@@ -89,4 +94,109 @@ func (s *Store) syncFolders() error {
 func missing(path string) bool {
 	_, err := os.Stat(path)
 	return errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
+}
+
+// AddFolder adds dir to project id. The first folder is the main one, so
+// adding a folder to an idea makes it a project.
+func (s *Store) AddFolder(id int64, dir string) error {
+	// ponytail: checked before the write; two agents adding one folder at once could both win
+	if owner, err := s.FolderOwner(dir); err == nil {
+		return fmt.Errorf("%s is already a folder of %s", dir, owner.Name)
+	} else if !errors.Is(err, ErrNotFound) {
+		return err
+	}
+	return s.changeFolders(id, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`INSERT INTO folders (workspace_id, project_id, path, main, added_at)
+			SELECT ?, ?, ?, NOT EXISTS (SELECT 1 FROM folders WHERE project_id = ? AND workspace_id = ? AND main = 1), ?`,
+			DefaultWorkspace, id, filepath.Clean(dir), id, DefaultWorkspace, s.now().Unix())
+		return err
+	})
+}
+
+// changeFolders runs change on project id's folders in one transaction, then
+// keeps projects.path in step with the main folder for an older proz.
+func (s *Store) changeFolders(id int64, change func(*sql.Tx) error) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := change(tx); err != nil {
+		return err
+	}
+	res, err := tx.Exec(`UPDATE projects AS p SET path = `+mainPath+` WHERE p.id = ? AND p.workspace_id = ?`, id, DefaultWorkspace)
+	if err := foundOrErr(res, err); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// FolderOwner returns the project that has dir as one of its folders.
+func (s *Store) FolderOwner(dir string) (Project, error) {
+	dir = resolve(dir)
+	projects, err := s.Projects()
+	if err != nil {
+		return Project{}, err
+	}
+	for _, p := range projects {
+		for _, f := range p.Folders {
+			if resolve(f.Path) == dir {
+				return p, nil
+			}
+		}
+	}
+	return Project{}, ErrNotFound
+}
+
+// RemoveFolder removes dir from project id. Removing the main folder makes
+// the next oldest the main one; removing the last makes the project an idea,
+// its history kept.
+func (s *Store) RemoveFolder(id int64, dir string) error {
+	path, err := s.folderOf(id, dir)
+	if err != nil {
+		return err
+	}
+	return s.changeFolders(id, func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`DELETE FROM folders WHERE project_id = ? AND workspace_id = ? AND path = ?`, id, DefaultWorkspace, path); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`UPDATE folders SET main = 1 WHERE id = (SELECT min(id) FROM folders WHERE project_id = ? AND workspace_id = ?)
+			AND NOT EXISTS (SELECT 1 FROM folders WHERE project_id = ? AND workspace_id = ? AND main = 1)`, id, DefaultWorkspace, id, DefaultWorkspace)
+		return err
+	})
+}
+
+// folderOf returns the stored path of project id's folder dir.
+func (s *Store) folderOf(id int64, dir string) (string, error) {
+	projects, err := s.Projects()
+	if err != nil {
+		return "", err
+	}
+	for _, p := range projects {
+		if p.ID != id {
+			continue
+		}
+		for _, f := range p.Folders {
+			if resolve(f.Path) == resolve(dir) {
+				return f.Path, nil
+			}
+		}
+		return "", fmt.Errorf("%s is not a folder of %s", dir, p.Name)
+	}
+	return "", ErrNotFound
+}
+
+// SetMainFolder makes dir, one of project id's folders, its main folder.
+func (s *Store) SetMainFolder(id int64, dir string) error {
+	path, err := s.folderOf(id, dir)
+	if err != nil {
+		return err
+	}
+	return s.changeFolders(id, func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`UPDATE folders SET main = 0 WHERE project_id = ? AND workspace_id = ?`, id, DefaultWorkspace); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`UPDATE folders SET main = 1 WHERE project_id = ? AND workspace_id = ? AND path = ?`, id, DefaultWorkspace, path)
+		return err
+	})
 }
