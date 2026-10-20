@@ -110,7 +110,7 @@ func (s *Store) AddFolder(id int64, dir string) error {
 	defer cancel()
 	for _, wt := range otherCheckouts(ctx, dir) {
 		if owner, err := s.FolderOwner(wt); err == nil {
-			return fmt.Errorf("%s is a git worktree of %s, a folder of %s; worktrees count for their project without being added", dir, wt, owner.Name)
+			return fmt.Errorf("%s and %s are checkouts of one git repository, and %s is a folder of %s; its worktrees count for it without being added", dir, wt, wt, owner.Name)
 		} else if !errors.Is(err, ErrNotFound) {
 			return err
 		}

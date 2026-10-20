@@ -227,10 +227,9 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 						skip = append(skip, other.real)
 					}
 				}
-				place := pl.path
-				g, hasGit := readGit(ctx, place)
-				work := readWork(ctx, place, now, skip)
-				cl, hasCl := readClaude(place)
+				g, hasGit := readGit(ctx, pl.path)
+				work := readWork(ctx, pl.path, now, skip)
+				cl, hasCl := readClaude(pl.path)
 				active := work.when
 				if hasGit && g.when.After(active) {
 					active = g.when
@@ -339,7 +338,7 @@ type gitState struct {
 // are not the user's work, and in a bigger repo only commits under dir count.
 // ok is false when dir is empty, git is missing, or no such commit exists, so
 // the project falls back to its other signals; a nudge is the safe failure.
-// ponytail: two or three git processes per project per call; cache by HEAD mtime if project counts grow large.
+// ponytail: two or three git processes per place (folder or worktree) per call, plus two to find worktrees per folder; cache by HEAD mtime if project counts grow large.
 func readGit(ctx context.Context, dir string) (g gitState, ok bool) {
 	if dir == "" {
 		return g, false
