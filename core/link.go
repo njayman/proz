@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -156,6 +157,25 @@ func (s *Store) recognize(ref, provider, kind string) (Link, string, error) {
 		return Link{}, "", fmt.Errorf("kind %q: want %s or %s", l.Kind, LinkTracker, LinkBrain)
 	}
 	return l, u.Host, nil
+}
+
+// originForm is a GitHub remote URL, over HTTPS or SSH.
+var originForm = regexp.MustCompile(`^(?:https://(?:[^@/]+@)?github\.com/|ssh://git@github\.com/|git@github\.com:)([A-Za-z0-9-]+)/([\w.-]+?)(?:\.git)?/?$`)
+
+// GitHubOrigin is the GitHub repository dir's origin remote points at, as a
+// link ref, or "" when origin is elsewhere or missing, or git is slow.
+func GitHubOrigin(dir string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), gitLimit)
+	defer cancel()
+	out, err := gitCmd(ctx, dir, "remote", "get-url", "origin").Output()
+	if err != nil {
+		return ""
+	}
+	m := originForm.FindStringSubmatch(strings.TrimSpace(string(out)))
+	if m == nil {
+		return ""
+	}
+	return "https://github.com/" + m[1] + "/" + m[2]
 }
 
 // notesTool names the local notes at path: obsidian or logseq when a vault

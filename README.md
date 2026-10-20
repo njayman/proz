@@ -71,6 +71,8 @@ Opens the program picker: desktop applications by default, Tab for all PATH bina
 
 If the folder is already a folder of another project, or a git worktree of one, it first asks whether to track it as a separate project; anything but yes adds nothing.
 
+When the folder's git `origin` is on GitHub, it then offers to link the repository's issues as the project's tracker (see `proz link`): Enter or `y` links it, anything else does not.
+
 ### `proz delete <name>`
 
 Deletes a project. Without a name, opens the picker to select one.

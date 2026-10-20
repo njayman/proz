@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"bufio"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -63,6 +65,51 @@ func TestLinkALocalNotesFolder(t *testing.T) {
 		t.Fatalf("status: %q", out)
 	}
 	run(t, "unlink", notes, "web")
+}
+
+func TestAddOffersTheGitHubOriginAsTheTracker(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("needs git")
+	}
+	dir := configDir(t)
+	t.Cleanup(func() { stdin = bufio.NewReader(os.Stdin) })
+	repo := func(name, origin string) string {
+		p := filepath.Join(dir, name)
+		mkdirs(t, p)
+		for _, args := range [][]string{{"init", "-q"}, {"remote", "add", "origin", origin}} {
+			if out, err := exec.Command("git", append([]string{"-C", p}, args...)...).CombinedOutput(); err != nil {
+				t.Fatalf("git %v: %s", args, out)
+			}
+		}
+		return p
+	}
+	linked := func(name string) []core.Link {
+		return linksJSON(t, run(t, "status", name, "--json"))
+	}
+	want := []core.Link{{Kind: "tracker", Provider: "github", Ref: "https://github.com/acme/web"}}
+
+	for _, c := range []struct {
+		name, origin, answer string // answer after the arguments prompt
+		link                 bool
+	}{
+		{"enter", "git@github.com:acme/web.git", "\n", true},
+		{"yes", "https://github.com/acme/web.git", "y\n", true},
+		{"ssh", "ssh://git@github.com/acme/web", "Y\n", true},
+		{"no", "git@github.com:acme/web.git", "n\n", false},
+		{"other", "git@github.com:acme/web.git", "later\n", false},
+		{"agent", "git@github.com:acme/web.git", "", false}, // no terminal: no answer, never linked
+		{"gitlab", "git@gitlab.com:acme/web.git", "\n", false},
+	} {
+		stdin = bufio.NewReader(strings.NewReader("\n" + c.answer))
+		t.Chdir(repo(c.name, c.origin))
+		out := run(t, "add", c.name)
+		if asked := strings.Contains(out, "https://github.com/acme/web"); asked != (c.name != "gitlab") {
+			t.Errorf("%s: asked %v: %q", c.name, asked, out)
+		}
+		if got := linked(c.name); c.link != reflect.DeepEqual(got, want) || !c.link && len(got) != 0 {
+			t.Errorf("%s: links %+v", c.name, got)
+		}
+	}
 }
 
 // Agents parse the links array on every project; field names are a contract.

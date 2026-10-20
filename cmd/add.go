@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/njayman/proz/core"
@@ -131,5 +132,41 @@ func register(project Project) error {
 	} else {
 		fmt.Printf("Project '%s' added successfully!\n", project.Name)
 	}
+	offerGitHubLink(project)
 	return nil
+}
+
+// offerGitHubLink asks whether to link the GitHub repository the folder's
+// origin points at as the project's tracker. Enter or yes links it; anything
+// else, or no answer at all (no terminal, as for agents), never does.
+func offerGitHubLink(project Project) {
+	ref := core.GitHubOrigin(project.Path)
+	if ref == "" || slices.ContainsFunc(project.Links, func(l core.Link) bool { return l.Ref == ref }) {
+		return
+	}
+	fmt.Printf("Link its GitHub issues (%s) as the project's tracker? [Y/n] ", ref)
+	answer, err := stdin.ReadString('\n')
+	if a := strings.ToLower(strings.TrimSpace(answer)); err != nil || (a != "" && a != "y" && a != "yes") {
+		fmt.Println("Not linked.")
+		return
+	}
+	if err := withStore(func(s *core.Store) error {
+		projects, err := s.Projects()
+		if err != nil {
+			return err
+		}
+		id := project.ID
+		for _, p := range slices.Backward(projects) { // a new project is the newest one in its folder
+			if id == 0 && p.Name == project.Name && p.Path == project.Path {
+				id = p.ID
+				break
+			}
+		}
+		_, err = s.AddLink(id, ref, "", "")
+		return err
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not link %s: %v\n", ref, err)
+		return
+	}
+	fmt.Printf("Linked %s to %s.\n", project.Name, ref)
 }
