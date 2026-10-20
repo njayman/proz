@@ -12,7 +12,7 @@ import (
 )
 
 // folderJSON runs a folder command with --json and returns the project's
-// folders as main-first paths, and its path.
+// path and its folder paths, main first.
 func folderJSON(t *testing.T, args ...string) (path string, folders []string) {
 	t.Helper()
 	var p struct {
@@ -65,6 +65,7 @@ func TestFolderCommandErrorsSayFolder(t *testing.T) {
 
 	for args, want := range map[string]string{
 		"folder add " + web + " --project api":    "already a folder of web",
+		"folder add":                              "name the project",
 		"folder rm " + stray:                      "not a folder of any project",
 		"folder main " + stray + " --project web": "not a folder of web",
 	} {

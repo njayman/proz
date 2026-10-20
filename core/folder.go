@@ -168,22 +168,31 @@ func (s *Store) RemoveFolder(id int64, dir string) error {
 
 // folderOf returns the stored path of project id's folder dir.
 func (s *Store) folderOf(id int64, dir string) (string, error) {
-	projects, err := s.Projects()
+	p, err := s.Project(id)
 	if err != nil {
 		return "", err
 	}
-	for _, p := range projects {
-		if p.ID != id {
-			continue
+	want := resolve(dir)
+	for _, f := range p.Folders {
+		if resolve(f.Path) == want {
+			return f.Path, nil
 		}
-		for _, f := range p.Folders {
-			if resolve(f.Path) == resolve(dir) {
-				return f.Path, nil
-			}
-		}
-		return "", fmt.Errorf("%s is not a folder of %s", dir, p.Name)
 	}
-	return "", ErrNotFound
+	return "", fmt.Errorf("%s is not a folder of %s", dir, p.Name)
+}
+
+// Project returns the project with id.
+func (s *Store) Project(id int64) (Project, error) {
+	projects, err := s.Projects()
+	if err != nil {
+		return Project{}, err
+	}
+	for _, p := range projects {
+		if p.ID == id {
+			return p, nil
+		}
+	}
+	return Project{}, ErrNotFound
 }
 
 // SetMainFolder makes dir, one of project id's folders, its main folder.

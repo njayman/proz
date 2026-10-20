@@ -31,6 +31,9 @@ var folderAddCmd = &cobra.Command{
 		"adding one to an idea makes it a project.",
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 && folderProject == "" { // the current folder is already inside the project it would find
+			return errors.New("name the project to add this folder to: proz folder add --project <name>")
+		}
 		dir, err := folderArg(args)
 		if err != nil {
 			return err
@@ -40,11 +43,11 @@ var folderAddCmd = &cobra.Command{
 			return err
 		}
 		return changeFolder(p.ID, func(s *core.Store) error { return s.AddFolder(p.ID, dir) },
-			func(p core.Project) string {
-				if p.Path == dir {
-					return fmt.Sprintf("Added %s to %s as its main folder.", dir, p.Name)
+			func(after core.Project) string {
+				if after.Path == dir {
+					return fmt.Sprintf("Added %s to %s as its main folder.", dir, after.Name)
 				}
-				return fmt.Sprintf("Added %s to %s.", dir, p.Name)
+				return fmt.Sprintf("Added %s to %s.", dir, after.Name)
 			})
 	},
 }
@@ -67,11 +70,11 @@ var folderRmCmd = &cobra.Command{
 			return err
 		}
 		return changeFolder(p.ID, func(s *core.Store) error { return s.RemoveFolder(p.ID, dir) },
-			func(p core.Project) string {
-				if p.Path == "" {
-					return fmt.Sprintf("Removed %s; %s has no folders and is an idea again.", dir, p.Name)
+			func(after core.Project) string {
+				if after.Path == "" {
+					return fmt.Sprintf("Removed %s; %s has no folders and is an idea again.", dir, after.Name)
 				}
-				return fmt.Sprintf("Removed %s from %s; its main folder is %s.", dir, p.Name, p.Path)
+				return fmt.Sprintf("Removed %s from %s; its main folder is %s.", dir, after.Name, after.Path)
 			})
 	},
 }
@@ -90,7 +93,9 @@ var folderMainCmd = &cobra.Command{
 			return err
 		}
 		return changeFolder(p.ID, func(s *core.Store) error { return s.SetMainFolder(p.ID, dir) },
-			func(p core.Project) string { return fmt.Sprintf("%s is now the main folder of %s.", p.Path, p.Name) })
+			func(after core.Project) string {
+				return fmt.Sprintf("%s is now the main folder of %s.", after.Path, after.Name)
+			})
 	},
 }
 
@@ -123,16 +128,11 @@ func folderTarget(dir string) (core.Project, error) {
 // prints a project, or the message done gives.
 func changeFolder(id int64, change func(*core.Store) error, done func(core.Project) string) error {
 	var p core.Project
-	if err := withStore(func(s *core.Store) error {
+	if err := withStore(func(s *core.Store) (err error) {
 		if err := change(s); err != nil {
 			return err
 		}
-		projects, err := s.Projects()
-		for _, q := range projects {
-			if q.ID == id {
-				p = q
-			}
-		}
+		p, err = s.Project(id)
 		return err
 	}); err != nil {
 		return err

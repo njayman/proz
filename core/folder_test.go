@@ -145,7 +145,7 @@ func TestAFolderAnOlderProzWroteIsPickedUpOnOpen(t *testing.T) {
 	}
 }
 
-// folders lists p's folder paths, main first, and its path.
+// folderPaths returns the named project's path and its folder paths, main first.
 func folderPaths(t *testing.T, s *Store, name string) (main string, all []string) {
 	t.Helper()
 	p := projectNamed(t, s, name)
@@ -306,5 +306,28 @@ func TestTheDeepestFolderAcrossAllProjectsFindsTheProject(t *testing.T) {
 		if err != nil || p.Name != want {
 			t.Errorf("%s: got %q, %v; want %s", dir, p.Name, err, want)
 		}
+	}
+}
+
+func TestASnoozeOutlivesAnIdeaBecomingAProjectAndBack(t *testing.T) {
+	c := &clock{t0}
+	s := openAt(t, c)
+	if _, err := s.AddIdea("habit tracker"); err != nil {
+		t.Fatal(err)
+	}
+	c.t = c.t.Add(10 * day)
+	idea := projectNamed(t, s, "habit tracker")
+	if err := s.Snooze(idea.ID, 7*day); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := s.AddFolder(idea.ID, dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RemoveFolder(idea.ID, dir); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := s.Status(idea.ID); err != nil || st.State != StateSnoozed {
+		t.Fatalf("state %q, %v", st.State, err)
 	}
 }
