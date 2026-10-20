@@ -437,3 +437,58 @@ func TestTheBrainFolderIsNotActivityInAnyFolder(t *testing.T) {
 		t.Fatalf("last activity %v, %v; want registration only", st.LastActivity, err)
 	}
 }
+
+func TestANestedFoldersFilesAreCountedOnce(t *testing.T) {
+	c := &clock{t0}
+	s := openAt(t, c)
+	repo, commit := gitRepo(t)
+	commit(t0)
+	web := filepath.Join(repo, "web")
+	mkdirs(t, web)
+	touch(t, repo, "README.md", t0.Add(day))
+	touch(t, web, "a.js", t0.Add(day))
+	touch(t, web, "b.js", t0.Add(day))
+	if err := s.AddProject(Project{Name: "app", Path: repo}); err != nil {
+		t.Fatal(err)
+	}
+	app := projectNamed(t, s, "app")
+	if err := s.AddFolder(app.ID, web); err != nil {
+		t.Fatal(err)
+	}
+
+	c.t = t0.Add(20 * day)
+	st, err := s.Status(app.ID)
+	if err != nil || !strings.Contains(st.Note.Full(), "Uncommitted: 3 files") {
+		t.Fatalf("note %q, %v", st.Note.Lines, err)
+	}
+}
+
+func TestTheCommitLineFollowsTheFolderWorkedInLast(t *testing.T) {
+	c := &clock{t0}
+	s := openAt(t, c)
+	old, _ := gitRepo(t)
+	recent, _ := gitRepo(t)
+	for dir, msg := range map[string]string{old: "old commit", recent: "older commit, newer edits"} {
+		at := t0
+		if dir == recent {
+			at = t0.Add(-day)
+		}
+		touch(t, dir, "main.go", at)
+		git(t, dir, at, "add", "-A")
+		git(t, dir, at, "commit", "-q", "-m", msg)
+	}
+	touch(t, recent, "draft.md", t0.Add(4*day)) // newer than either commit
+	if err := s.AddProject(Project{Name: "app", Path: old}); err != nil {
+		t.Fatal(err)
+	}
+	app := projectNamed(t, s, "app")
+	if err := s.AddFolder(app.ID, recent); err != nil {
+		t.Fatal(err)
+	}
+
+	c.t = t0.Add(20 * day)
+	st, err := s.Status(app.ID)
+	if err != nil || !strings.Contains(st.Note.Full(), "Last commit: older commit, newer edits") {
+		t.Fatalf("note %q, %v", st.Note.Lines, err)
+	}
+}

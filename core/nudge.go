@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -197,14 +198,20 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 			defer cancel()
 			x := &sig[i]
 			var gitActive time.Time // when the folder x.g came from was last active
-			// ponytail: a folder nested in another folder of the same project counts its uncommitted files twice
 			for _, f := range r.st.Folders {
 				if f.Missing {
 					x.missing = append(x.missing, f.Path)
 					continue
 				}
+				// a folder of the project nested in this one counts its own files
+				skip := slices.Clone(ignore)
+				for _, other := range r.st.Folders {
+					if o, root := resolve(other.Path), resolve(f.Path); o != root && within(o, root) {
+						skip = append(skip, o)
+					}
+				}
 				g, hasGit := readGit(ctx, f.Path)
-				work := readWork(ctx, f.Path, now, ignore)
+				work := readWork(ctx, f.Path, now, skip)
 				cl, hasCl := readClaude(f.Path)
 				active := work.when
 				if hasGit && g.when.After(active) {
