@@ -99,6 +99,10 @@ Captures an idea as a project with no folder yet, so it resurfaces too. Register
 
 Records a progress checkpoint, usually written by an agent at the end of a session ("shipped login; next: signup"). The latest milestone leads the left-off note and counts as activity. `proz status` lists them all.
 
+### `proz link <url> [project]` and `proz unlink <url> [project]`
+
+Links a project to the tracker or brain it already uses, so agents know where its tasks and notes live: paste its GitHub repository, Linear project, Jira board, Trello board, Asana or Todoist project, or Notion page. proz recognizes the tool from the address; Notion counts as notes unless you add `--kind tracker`. A project can have several links and one link can sit on several projects. proz never reads through a link and stores no passwords or tokens; your agent reads the tool with its own MCP server. With no project name, uses the project containing the current folder. `--json` prints the project as `list --json` does.
+
 ### `proz resume | snooze | drop | restore [project]`
 
 The answers to a nudge. `resume` prints the left-off note and opens the project's program. `snooze [project] [days]` hides the nudge for N days (7 by default), and `snooze [project] --until 2026-11-09` hides it until the start of that day; either way it comes back if the project is still quiet. `drop` archives the project until any new activity revives it, and `restore` brings it back by hand. `proz archived [--json]` lists dropped projects.

@@ -42,7 +42,7 @@ var folderAddCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return changeFolder(p.ID, func(s *core.Store) error { return s.AddFolder(p.ID, dir) },
+		return changeProject(p.ID, folderJSONOut, func(s *core.Store) error { return s.AddFolder(p.ID, dir) },
 			func(after core.Project) string {
 				if after.Path == dir {
 					return fmt.Sprintf("Added %s to %s as its main folder.", dir, after.Name)
@@ -69,7 +69,7 @@ var folderRmCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return changeFolder(p.ID, func(s *core.Store) error { return s.RemoveFolder(p.ID, dir) },
+		return changeProject(p.ID, folderJSONOut, func(s *core.Store) error { return s.RemoveFolder(p.ID, dir) },
 			func(after core.Project) string {
 				if after.Path == "" {
 					return fmt.Sprintf("Removed %s; %s has no folders and is an idea again.", dir, after.Name)
@@ -92,7 +92,7 @@ var folderMainCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return changeFolder(p.ID, func(s *core.Store) error { return s.SetMainFolder(p.ID, dir) },
+		return changeProject(p.ID, folderJSONOut, func(s *core.Store) error { return s.SetMainFolder(p.ID, dir) },
 			func(after core.Project) string {
 				return fmt.Sprintf("%s is now the main folder of %s.", after.Path, after.Name)
 			})
@@ -124,9 +124,9 @@ func folderTarget(dir string) (core.Project, error) {
 	return p, err
 }
 
-// changeFolder applies change, then prints project id as 'list --json'
+// changeProject applies change, then prints project id as 'list --json'
 // prints a project, or the message done gives.
-func changeFolder(id int64, change func(*core.Store) error, done func(core.Project) string) error {
+func changeProject(id int64, asJSON bool, change func(*core.Store) error, done func(core.Project) string) error {
 	var p core.Project
 	if err := withStore(func(s *core.Store) (err error) {
 		if err := change(s); err != nil {
@@ -137,7 +137,7 @@ func changeFolder(id int64, change func(*core.Store) error, done func(core.Proje
 	}); err != nil {
 		return err
 	}
-	if folderJSONOut {
+	if asJSON {
 		return printJSON(p)
 	}
 	fmt.Println(done(p))

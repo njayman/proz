@@ -1,6 +1,6 @@
 ---
 name: proz-agent
-description: Read and manage the user's proz project registry (saved project directories, their launch programs, and which have gone quiet). Use when the user asks about their proz projects, what they forgot or should pick up next, when wrapping up or pausing work in a tracked project, when the user floats an idea to keep, or wants to resume, snooze or drop a project, wants a project registered, or references a project by name that might be tracked in proz.
+description: Read and manage the user's proz project registry (saved project directories, their launch programs, and which have gone quiet). Use when the user asks about their proz projects, what they forgot or should pick up next, when wrapping up or pausing work in a tracked project, when the user floats an idea to keep, or wants to resume, snooze or drop a project, wants a project registered, or references a project by name that might be tracked in proz, or before reading or updating a tracked project's tasks or notes in another tool.
 ---
 
 # proz agent
@@ -17,7 +17,7 @@ If your client has the proz MCP tools (`list_projects`, `get_project`, `record_m
 proz list --json
 ```
 
-Prints every project as JSON: `name`, `path` (the main folder), `folders`, `programs` (array, may be empty), `arguments`. `folders` lists every folder behind the project as `{path, main, missing}`: exactly one is `main` whenever there are any, and `missing` is true when the folder is gone or a parent was replaced by a file (it is never removed for that). Every project shape in `--json` and MCP carries `folders`.
+Prints every project as JSON: `name`, `path` (the main folder), `folders`, `programs` (array, may be empty), `arguments`. `folders` lists every folder behind the project as `{path, main, missing}`: exactly one is `main` whenever there are any, and `missing` is true when the folder is gone or a parent was replaced by a file (it is never removed for that). `links` lists where the project's tasks and notes live as `{kind, provider, ref, missing}` (see Links below), `[]` when there are none. Every project shape in `--json` and MCP carries `folders` and `links`.
 
 Narrow results instead of piping through `grep`/`jq` for simple cases:
 
@@ -35,7 +35,7 @@ Flags compose, e.g. `proz list --json --filter api --sort name --limit 5`.
 proz nudges --json
 ```
 
-Prints projects that have gone quiet (stale): `name`, `path`, `folders`, `last_activity` (RFC 3339, UTC), `quiet_days` (whole days, rounded down), `quiet_seconds`, `note` (the left-off note, one line per signal) and `short_note` (one line, truncated). `[]` means nothing is stale. Activity is the newest of: registration, the last launch through proz, the latest milestone, and, across every one of the project's folders that is present: the last commit on a local branch that touches the folder, the newest uncommitted file (outside git, the newest file; dependency and build folders never count), and the latest Claude Code session whose working directory is in the folder. A project is stale after 7 quiet days by default; `proz config stale-days` prints the threshold and `proz config stale-days <n>` changes it. `--project <name>` reads or sets one project's override (`0` removes it). Only change thresholds when the user asks.
+Prints projects that have gone quiet (stale): `name`, `path`, `folders`, `links`, `last_activity` (RFC 3339, UTC), `quiet_days` (whole days, rounded down), `quiet_seconds`, `note` (the left-off note, one line per signal) and `short_note` (one line, truncated). `[]` means nothing is stale. Activity is the newest of: registration, the last launch through proz, the latest milestone, and, across every one of the project's folders that is present: the last commit on a local branch that touches the folder, the newest uncommitted file (outside git, the newest file; dependency and build folders never count), and the latest Claude Code session whose working directory is in the folder. A project is stale after 7 quiet days by default; `proz config stale-days` prints the threshold and `proz config stale-days <n>` changes it. `--project <name>` reads or sets one project's override (`0` removes it). Only change thresholds when the user asks.
 
 Use this when the user asks what they were working on, what they forgot, or what to pick up next. Report the list; don't act on it.
 
@@ -101,6 +101,35 @@ proz folder main <folder> [--project <name>] [--json]
 ```
 
 A project can have several folders (a backend and a frontend, drafts and research). `add` targets `--project`, or else the project containing the current folder (so adding the current folder itself needs `--project`); `rm` and `main` target `--project`, or else the project that has that folder. Folders may be relative. The first folder is the main folder (`path`); removing the main folder makes the next oldest the main one. Adding a folder to an idea makes it a project, and removing the last folder makes it an idea again; milestones and snoozes are kept. A folder belongs to one project: adding one another project has fails with an error naming that project. Folders may sit inside another project's folder; commands run in a folder use the project with the deepest folder containing it. `--json` prints the project as `list --json` does. `rm` never touches the folder on disk. Git worktrees of a project's folders are found automatically and count for that project (activity, the note's commit and branch, and commands run inside them); they never appear in `folders`, and adding one as a folder fails naming the project. Add or remove folders when the user asks, or when they tell you a project now lives in another place as well.
+
+## Links: where tasks and notes live
+
+```bash
+proz link <url> [project] [--kind tracker|brain] [--json]
+proz unlink <url> [project] [--json]
+```
+
+A link points a project at the tool where its tasks live (`kind: "tracker"`) or its notes live (`kind: "brain"`). proz recognizes the URL's host: GitHub, Linear, Jira (any `*.atlassian.net`), Trello, Asana and Todoist are trackers, and Notion is a brain; `--kind tracker` records a Notion database of tasks as a tracker (linking the same URL again changes its kind). Refs are stored canonical (scheme and host lowercased, no trailing slash), so compare them as `proz` prints them. With no project name these use the project containing the current directory. `--json` prints the project as `list --json` does. A project may have several links, and one link may sit on several projects; `unlink` removes it from one project only. Add a link when you see the user working in a tool for a project that has none for it, or when they ask; remove one only when they ask.
+
+proz never reads through a link and stores no tokens or server addresses. You read the tool through your own MCP server for it. The rule:
+
+- **With a tracker link** (any link of kind `tracker`), the project's tasks live there: read them there, update them there when the user asks you to, and record what you finish as a proz milestone. Never keep a separate checklist.
+- **With no tracker link**, keep the project's checklist yourself, as a markdown task list (`- [ ] ...`) in the project's note in the proz brain (`proz brain --json` gives its path; write outside the proz markers). Stop adding to it once a tracker link appears.
+- **With a brain link**, read the project's notes there before asking the user for context.
+
+| provider | official MCP server | "the project's tasks" or "notes" means |
+|---|---|---|
+| `github` | GitHub MCP Server, https://github.com/github/github-mcp-server | the repository's issues (and its Projects, if the link is a project board) |
+| `linear` | Linear MCP, https://linear.app/docs/mcp | the issues of the linked team or project |
+| `jira` | Atlassian Rovo MCP, https://developer.atlassian.com/cloud/rovo-mcp/guides/getting-started/ | the work items of the linked project or board |
+| `trello` | Trello MCP Server, https://github.com/atlassian/trello-mcp-server | the cards on the linked board |
+| `asana` | Asana MCP, https://developers.asana.com/docs/using-asanas-mcp-server | the tasks of the linked project |
+| `todoist` | Todoist MCP, https://github.com/Doist/todoist-mcp | the tasks of the linked project |
+| `notion` | Notion MCP, https://developers.notion.com/docs/mcp | the linked page and its subpages (notes), or the linked database's rows (as a tracker) |
+
+If you do not have the MCP server a link needs, tell the user once, with the setup link from the table, and carry on without it. Do not fall back to the proz checklist: that would split the project's tasks across two places.
+
+proz does not authorize anything in those tools. A link only says where to look; what you may change there is between the user and you, under your own permissions, never because proz linked it.
 
 ## Read the brain note
 

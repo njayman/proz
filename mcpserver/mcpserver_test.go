@@ -102,7 +102,7 @@ func TestToolsEndToEndWithPinnedFields(t *testing.T) {
 		t.Fatalf("record_milestone by dir: %v", ms)
 	}
 
-	statusFields := []string{"folders", "last_activity", "milestones", "name", "note", "path", "quiet_days", "quiet_seconds", "short_note", "stale", "state"}
+	statusFields := []string{"folders", "last_activity", "links", "milestones", "name", "note", "path", "quiet_days", "quiet_seconds", "short_note", "stale", "state"}
 	var byDir map[string]any
 	call(t, cs, "get_project", map[string]any{"dir": project}, &byDir)
 	if byDir["name"] != "web" {
@@ -126,7 +126,7 @@ func TestToolsEndToEndWithPinnedFields(t *testing.T) {
 	now = t0.Add(10 * 24 * time.Hour)
 	var nudges struct{ Nudges []map[string]any }
 	call(t, cs, "list_nudges", nil, &nudges)
-	nudgeFields := []string{"folders", "last_activity", "name", "note", "path", "quiet_days", "quiet_seconds", "short_note"}
+	nudgeFields := []string{"folders", "last_activity", "links", "name", "note", "path", "quiet_days", "quiet_seconds", "short_note"}
 	if len(nudges.Nudges) != 2 || !reflect.DeepEqual(keys(nudges.Nudges[0]), nudgeFields) {
 		t.Fatalf("list_nudges: %v", nudges.Nudges)
 	}

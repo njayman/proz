@@ -127,6 +127,10 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 	if err != nil {
 		return nil, err
 	}
+	links, err := s.links()
+	if err != nil {
+		return nil, err
+	}
 	rows, err := s.db.Query(`SELECT p.id, p.name, `+mainPath+`,
 			max(p.created_at, coalesce(p.last_launch, 0), coalesce(m.created_at, 0)), p.stale_seconds, m.text,
 			p.snoozed_until, p.snoozed_at, p.dropped_at, p.notified_at
@@ -154,6 +158,7 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 			return nil, err
 		}
 		r.st.Folders = folders[r.st.ID]
+		r.st.Links = append([]Link{}, links[r.st.ID]...)
 		found = append(found, r)
 	}
 	rows.Close() // release the single connection before running git
