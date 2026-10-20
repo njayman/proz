@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -104,6 +105,15 @@ func (s *Store) AddFolder(id int64, dir string) error {
 		return fmt.Errorf("%s is already a folder of %s", dir, owner.Name)
 	} else if !errors.Is(err, ErrNotFound) {
 		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), gitLimit)
+	defer cancel()
+	for _, wt := range otherCheckouts(ctx, dir) {
+		if owner, err := s.FolderOwner(wt); err == nil {
+			return fmt.Errorf("%s is a git worktree of %s, a folder of %s; worktrees count for their project without being added", dir, wt, owner.Name)
+		} else if !errors.Is(err, ErrNotFound) {
+			return err
+		}
 	}
 	return s.changeFolders(id, func(tx *sql.Tx) error {
 		_, err := tx.Exec(`INSERT INTO folders (workspace_id, project_id, path, main, added_at)

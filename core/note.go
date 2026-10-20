@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -51,12 +52,28 @@ func plural(format string, n int) string {
 // contains it, across every project's folders, so agents and the CLI can work
 // from anywhere inside a project.
 func (s *Store) ProjectAt(dir string) (Project, error) {
-	dir = resolve(dir)
 	projects, err := s.Projects()
 	if err != nil {
 		return Project{}, err
 	}
-	var best Project
+	if p, ok := deepestFolder(projects, dir); ok {
+		return p, nil
+	}
+	// inside a worktree: the same place in the project's own checkout
+	ctx, cancel := context.WithTimeout(context.Background(), gitLimit)
+	defer cancel()
+	for _, wt := range otherCheckouts(ctx, dir) {
+		if p, ok := deepestFolder(projects, wt); ok {
+			return p, nil
+		}
+	}
+	return Project{}, ErrNotFound
+}
+
+// deepestFolder returns the project with the deepest folder that is dir or
+// contains it.
+func deepestFolder(projects []Project, dir string) (best Project, ok bool) {
+	dir = resolve(dir)
 	bestLen := -1
 	for _, p := range projects {
 		for _, f := range p.Folders {
@@ -65,10 +82,7 @@ func (s *Store) ProjectAt(dir string) (Project, error) {
 			}
 		}
 	}
-	if bestLen < 0 {
-		return Project{}, ErrNotFound
-	}
-	return best, nil
+	return best, bestLen >= 0
 }
 
 // within reports whether dir is root or inside it; both already resolved.

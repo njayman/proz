@@ -198,21 +198,39 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 			defer cancel()
 			x := &sig[i]
 			var gitActive time.Time // when the folder x.g came from was last active
+			// every present folder, and the same place in each of its worktrees
+			type place struct{ path, real string } // as written, and resolved to compare
+			var places []place
+			add := func(path string) {
+				p := place{path, resolve(path)}
+				if !slices.ContainsFunc(places, func(q place) bool { return q.real == p.real }) {
+					places = append(places, p)
+				}
+			}
 			for _, f := range r.st.Folders {
 				if f.Missing {
 					x.missing = append(x.missing, f.Path)
 					continue
 				}
-				// a folder of the project nested in this one counts its own files
-				skip := slices.Clone(ignore)
-				for _, other := range r.st.Folders {
-					if o, root := resolve(other.Path), resolve(f.Path); o != root && within(o, root) {
-						skip = append(skip, o)
+				add(f.Path)
+				for _, wt := range otherCheckouts(ctx, f.Path) {
+					if !missing(wt) {
+						add(wt)
 					}
 				}
-				g, hasGit := readGit(ctx, f.Path)
-				work := readWork(ctx, f.Path, now, skip)
-				cl, hasCl := readClaude(f.Path)
+			}
+			for _, pl := range places {
+				// a place of the project nested in this one counts its own files
+				skip := slices.Clone(ignore)
+				for _, other := range places {
+					if other.real != pl.real && within(other.real, pl.real) {
+						skip = append(skip, other.real)
+					}
+				}
+				place := pl.path
+				g, hasGit := readGit(ctx, place)
+				work := readWork(ctx, place, now, skip)
+				cl, hasCl := readClaude(place)
 				active := work.when
 				if hasGit && g.when.After(active) {
 					active = g.when
