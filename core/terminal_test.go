@@ -476,10 +476,10 @@ func TestAnAgentStartsInTheFolderWithNoArgumentsInTheUsersTerminal(t *testing.T)
 	}
 }
 
-func TestAgentsOnPathAreTheKnownAgentCLIsFoundInOrder(t *testing.T) {
+func TestAgentCLIsOnPathAreTheKnownOnesFoundInOrder(t *testing.T) {
 	fakePath(t, "aider", "claude")
-	want := []Agent{{"Claude Code", "claude"}, {"aider", "aider"}}
-	if got := AgentsOnPath(); !reflect.DeepEqual(got, want) {
+	want := []AgentCLI{{"Claude Code", "claude"}, {"aider", "aider"}}
+	if got := AgentCLIsOnPath(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
 }

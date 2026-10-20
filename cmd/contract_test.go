@@ -765,3 +765,33 @@ func TestConfigNeedsTerminalJSONContract(t *testing.T) {
 		t.Fatal("want an error for maybe")
 	}
 }
+
+// The launcher's "Start Claude Code here" from the CLI: the agent starts in
+// the project's folder, in the user's terminal, without the project's arguments.
+func TestResumeAgentStartsTheAgentCLIInTheProjectFolder(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake programs are shell scripts")
+	}
+	dir := configDir(t)
+	project := filepath.Join(dir, "web")
+	os.MkdirAll(project, 0775)
+	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
+	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": `+jsonString(project)+`, "programs": ["code"], "arguments": ["--new-window"]}]`), 0644)
+	bin, record := t.TempDir(), filepath.Join(t.TempDir(), "ran")
+	os.WriteFile(filepath.Join(bin, "fake-term"), []byte("#!/bin/sh\nshift\nexec \"$@\"\n"), 0755) // drops its "--"
+	os.WriteFile(filepath.Join(bin, "claude"), []byte("#!/bin/sh\necho \"$(pwd) $*\" > "+record+"\n"), 0755)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	run(t, "config", "terminal", "fake-term --")
+
+	run(t, "resume", "web", "--agent", "claude")
+	var ran []byte
+	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline) && len(ran) == 0; time.Sleep(20 * time.Millisecond) {
+		ran, _ = os.ReadFile(record)
+	}
+	if got := strings.TrimSpace(string(ran)); got != project+" " && got != project {
+		t.Fatalf("want claude run in %s with no arguments, got %q", project, got)
+	}
+	if err := execute("resume", "web", "--agent", "claude", "--terminal"); err == nil {
+		t.Fatal("--agent and --terminal together should fail")
+	}
+}

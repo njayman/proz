@@ -26,7 +26,12 @@ var ErrNoTerminal = errors.New("set the terminal setting with: proz config termi
 var terminalPrograms = map[string]bool{
 	"vi": true, "vim": true, "nvim": true, "hx": true, "helix": true, "nano": true,
 	"micro": true, "kak": true, "lazygit": true, "tig": true,
-	"claude": true, "codex": true, "gemini": true, "opencode": true, "aider": true,
+}
+
+func init() {
+	for _, a := range KnownAgentCLIs { // agent CLIs are terminal programs
+		terminalPrograms[a.Program] = true
+	}
 }
 
 // NeedsTerminal is whether a program runs in a terminal, and whether that is
@@ -175,19 +180,20 @@ func (s *Store) LaunchTerminal(p Project, attached bool) (*exec.Cmd, error) {
 	return s.launchInFolder(p, nil, attached)
 }
 
-// Agent is a coding agent CLI proz can start in a project's folder.
-type Agent struct {
+// AgentCLI is a coding agent's command-line program, which proz can start
+// in a project's folder.
+type AgentCLI struct {
 	Name    string // as people call it, such as "Claude Code"
 	Program string
 }
 
-// KnownAgents are the agent CLIs the launcher offers when they are on PATH.
-var KnownAgents = []Agent{{"Claude Code", "claude"}, {"Codex", "codex"}, {"Gemini CLI", "gemini"}, {"opencode", "opencode"}, {"aider", "aider"}}
+// KnownAgentCLIs are the agent CLIs the launcher offers when they are on PATH.
+var KnownAgentCLIs = []AgentCLI{{"Claude Code", "claude"}, {"Codex", "codex"}, {"Gemini CLI", "gemini"}, {"opencode", "opencode"}, {"aider", "aider"}}
 
-// AgentsOnPath are the known agents installed here, in KnownAgents' order.
-func AgentsOnPath() []Agent {
-	var out []Agent
-	for _, a := range KnownAgents {
+// AgentCLIsOnPath are the known agent CLIs installed here, in KnownAgentCLIs' order.
+func AgentCLIsOnPath() []AgentCLI {
+	var out []AgentCLI
+	for _, a := range KnownAgentCLIs {
 		if _, err := exec.LookPath(a.Program); err == nil {
 			out = append(out, a)
 		}

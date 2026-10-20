@@ -99,7 +99,7 @@ Records a progress checkpoint, usually written by an agent at the end of a sessi
 
 ### `proz resume | snooze | drop | restore [project]`
 
-The answers to a nudge. `resume` prints the left-off note and opens the project's program. `snooze [project] [days]` hides the nudge for N days (7 by default), and `snooze [project] --until 2026-11-09` hides it until the start of that day; either way it comes back if the project is still quiet. `drop` archives the project until any new activity revives it, and `restore` brings it back by hand. `proz archived [--json]` lists dropped projects.
+The answers to a nudge. `resume` prints the left-off note and opens the project's program. `resume --terminal` opens a terminal in its folder instead, and `resume --agent claude` (or `codex`, `gemini`, `opencode`, `aider`) starts that agent CLI there. `snooze [project] [days]` hides the nudge for N days (7 by default), and `snooze [project] --until 2026-11-09` hides it until the start of that day; either way it comes back if the project is still quiet. `drop` archives the project until any new activity revives it, and `restore` brings it back by hand. `proz archived [--json]` lists dropped projects.
 
 ### `proz tray`
 

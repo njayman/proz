@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strconv"
 	"time"
 
@@ -21,12 +22,16 @@ var resumeCmd = &cobra.Command{
 		"(asking which when there are several). With no name, uses the project\n" +
 		"containing the current directory. --terminal opens a terminal in the\n" +
 		"project's folder instead: your shell here when run in a terminal, else\n" +
-		"a new terminal window.",
+		"a new terminal window. --agent claude (or codex, gemini, opencode,\n" +
+		"aider) starts that agent CLI in the project's folder, in a terminal.",
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		p, err := resolveProject(args)
 		if err != nil {
 			return err
+		}
+		if resumeAgent != "" && resumeTerminal {
+			return errors.New("--agent already opens a terminal; use one of --agent and --terminal")
 		}
 		var st core.Status
 		if err := withStore(func(s *core.Store) (err error) {
@@ -43,11 +48,17 @@ var resumeCmd = &cobra.Command{
 		if resumeTerminal {
 			return launchTerminal(p)
 		}
+		if resumeAgent != "" {
+			return runLaunch(func(s *core.Store, attached bool) (*exec.Cmd, error) { return s.LaunchAgent(p, resumeAgent, attached) })
+		}
 		return launch(p, chooseProgram(p))
 	},
 }
 
-var resumeTerminal bool
+var (
+	resumeTerminal bool
+	resumeAgent    string
+)
 
 var snoozeCmd = &cobra.Command{
 	Use:   "snooze [project] [days | --until YYYY-MM-DD]",
@@ -179,5 +190,6 @@ func init() {
 	archivedCmd.Flags().BoolVar(&archivedJSON, "json", false, "print archived projects as JSON")
 	snoozeCmd.Flags().StringVar(&snoozeUntil, "until", "", "snooze to the start of this local date (YYYY-MM-DD)")
 	resumeCmd.Flags().BoolVar(&resumeTerminal, "terminal", false, "open a terminal in the project's folder instead of its program")
+	resumeCmd.Flags().StringVar(&resumeAgent, "agent", "", "start this agent CLI (claude, codex, ...) in the project's folder instead of its program")
 	rootCmd.AddCommand(resumeCmd, snoozeCmd, dropCmd, restoreCmd, archivedCmd)
 }

@@ -363,33 +363,7 @@ func TestTheDarkToggleSwitchesTheLookAndRemembersIt(t *testing.T) {
 // tapCheck taps the check box labelled text.
 func tapCheck(t *testing.T, w fyne.Window, text string) {
 	t.Helper()
-	var find func(o fyne.CanvasObject) *widget.Check
-	find = func(o fyne.CanvasObject) *widget.Check {
-		switch o := o.(type) {
-		case *widget.Check:
-			if o.Text == text {
-				return o
-			}
-		case *fyne.Container:
-			for _, k := range o.Objects {
-				if c := find(k); c != nil {
-					return c
-				}
-			}
-		case fyne.Widget:
-			for _, k := range test.WidgetRenderer(o).Objects() {
-				if c := find(k); c != nil {
-					return c
-				}
-			}
-		}
-		return nil
-	}
-	c := find(w.Content())
-	if c == nil {
-		t.Fatalf("no %q check box", text)
-	}
-	test.Tap(c)
+	test.Tap(find(t, w, func(c *widget.Check) bool { return c.Text == text }))
 }
 
 func TestEnterAfterStatusesReturnStillOpensTheMainProgram(t *testing.T) {
@@ -463,23 +437,11 @@ func TestTheFilterBoxAndListNameThemselvesToScreenReaders(t *testing.T) {
 	slowStatuses(t)
 	w, _, _ := launcher(t, core.Project{Name: "web", Path: "/src/web"})
 	var names []string
-	var walk func(o fyne.CanvasObject)
-	walk = func(o fyne.CanvasObject) {
+	for _, o := range objects(w) {
 		if a, ok := o.(fyne.Accessible); ok {
 			names = append(names, a.AccessibilityLabel())
 		}
-		switch o := o.(type) {
-		case *fyne.Container:
-			for _, k := range o.Objects {
-				walk(k)
-			}
-		case fyne.Widget:
-			for _, k := range test.WidgetRenderer(o).Objects() {
-				walk(k)
-			}
-		}
 	}
-	walk(w.Content())
 	for _, want := range []string{"Filter projects", "Projects"} {
 		if !slices.Contains(names, want) {
 			t.Fatalf("no %q for screen readers: %q", want, names)
@@ -500,55 +462,13 @@ func TestCtrlEditingKeysStillWorkInTheFilterBox(t *testing.T) {
 // button finds the button labelled text on screen.
 func button(t *testing.T, w fyne.Window, text string) *widget.Button {
 	t.Helper()
-	var found *widget.Button
-	var walk func(o fyne.CanvasObject)
-	walk = func(o fyne.CanvasObject) {
-		switch o := o.(type) {
-		case *widget.Button:
-			if o.Text == text && o.Visible() {
-				found = o
-			}
-		case *fyne.Container:
-			for _, k := range o.Objects {
-				walk(k)
-			}
-		case fyne.Widget:
-			for _, k := range test.WidgetRenderer(o).Objects() {
-				walk(k)
-			}
-		}
-	}
-	walk(w.Content())
-	if found == nil {
-		t.Fatalf("no %q button: %q", text, texts(w))
-	}
-	return found
+	return find(t, w, func(b *widget.Button) bool { return b.Text == text && b.Visible() })
 }
 
 // moreWays is the "More ways to open" menu on screen.
 func moreWays(t *testing.T, w fyne.Window) *widget.Select {
 	t.Helper()
-	var found *widget.Select
-	var walk func(o fyne.CanvasObject)
-	walk = func(o fyne.CanvasObject) {
-		switch o := o.(type) {
-		case *widget.Select:
-			found = o
-		case *fyne.Container:
-			for _, k := range o.Objects {
-				walk(k)
-			}
-		case fyne.Widget:
-			for _, k := range test.WidgetRenderer(o).Objects() {
-				walk(k)
-			}
-		}
-	}
-	walk(w.Content())
-	if found == nil || found.PlaceHolder != "More ways to open" {
-		t.Fatalf("no More ways to open menu")
-	}
-	return found
+	return find(t, w, func(s *widget.Select) bool { return s.PlaceHolder == "More ways to open" })
 }
 
 // agentsOnPath leaves only fake agent CLIs named names on PATH.
@@ -621,5 +541,48 @@ func TestSnoozeAWeekAndDropActThroughTheStoreAndTheListUpdates(t *testing.T) {
 	eventually(t, w, "ARCHIVED")
 	if st, err := s.Status(ps[0].ID); err != nil || st.State != core.StateArchived {
 		t.Fatalf("web: %v, %v", st.State, err)
+	}
+}
+
+// objects is everything the window draws, widgets and their parts.
+func objects(w fyne.Window) []fyne.CanvasObject {
+	var out []fyne.CanvasObject
+	var walk func(o fyne.CanvasObject)
+	walk = func(o fyne.CanvasObject) {
+		out = append(out, o)
+		switch o := o.(type) {
+		case *fyne.Container:
+			for _, k := range o.Objects {
+				walk(k)
+			}
+		case fyne.Widget:
+			for _, k := range test.WidgetRenderer(o).Objects() {
+				walk(k)
+			}
+		}
+	}
+	walk(w.Content())
+	return out
+}
+
+// find is the first T on screen that match accepts.
+func find[T fyne.CanvasObject](t *testing.T, w fyne.Window, match func(T) bool) T {
+	t.Helper()
+	for _, o := range objects(w) {
+		if o, ok := o.(T); ok && match(o) {
+			return o
+		}
+	}
+	var none T
+	t.Fatalf("no %T matching on screen: %q", none, texts(w))
+	return none
+}
+
+func TestEnterOnAnIdeaOpensNothing(t *testing.T) {
+	slowStatuses(t)
+	w, got, closed := launcher(t, core.Project{Name: "someday"})
+	press(w, fyne.KeyReturn)
+	if len(*got) != 0 || *closed {
+		t.Fatalf("an idea has no folder to open: opened %+v, closed %v", *got, *closed)
 	}
 }

@@ -52,8 +52,8 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 		all[i] = core.Status{Project: p}
 	}
 	shown, selected := all, 0
-	picked := false // the user moved the selection
-	agents := core.AgentsOnPath()
+	picked := false                  // the user moved the selection
+	agents := core.AgentCLIsOnPath() // ponytail: read once per window; the tray-started window has the session PATH
 	var open func(Way)
 	var act func(func(int64) error)
 
@@ -97,9 +97,11 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 			for i, wy := range ways[1:] {
 				labels[i] = wy.label
 			}
-			more := widget.NewSelect(labels, func(l string) {
+			var more *widget.Select
+			more = widget.NewSelect(labels, func(l string) {
 				if i := slices.Index(labels, l); i >= 0 {
 					open(ways[i+1].Way)
+					more.ClearSelected() // still open after a failed launch: back to the placeholder
 				}
 			})
 			more.PlaceHolder = "More ways to open"
@@ -158,7 +160,7 @@ func New(w fyne.Window, s *core.Store, launch Launch) {
 			picked = true
 			choose(selected + step)
 		case fyne.KeyReturn, fyne.KeyEnter:
-			if len(shown) > 0 {
+			if len(shown) > 0 && shown[selected].Path != "" { // ponytail: Enter on an idea opens setup with #93
 				open(waysToOpen(shown[selected].Project, nil)[0].Way)
 			}
 		case fyne.KeyEscape:
@@ -347,22 +349,22 @@ func stateWord(st core.Status) string {
 	return word
 }
 
-// way is a way to open a project, as the launcher names it.
-type way struct {
+// wayOption is a way to open a project, as the launcher names it.
+type wayOption struct {
 	Way
 	label string
 }
 
 // waysToOpen are the ways to open p, the main one first: its programs, then
 // a terminal, then each agent. With no programs the terminal is the main one.
-func waysToOpen(p core.Project, agents []core.Agent) []way {
-	var out []way
+func waysToOpen(p core.Project, agents []core.AgentCLI) []wayOption {
+	var out []wayOption
 	for _, prog := range p.Programs {
-		out = append(out, way{Way{Program: prog}, "Open in " + filepath.Base(prog)})
+		out = append(out, wayOption{Way{Program: prog}, "Open in " + filepath.Base(prog)})
 	}
-	out = append(out, way{Way{}, "Terminal here"})
+	out = append(out, wayOption{Way{}, "Terminal here"})
 	for _, a := range agents {
-		out = append(out, way{Way{Program: a.Program, Agent: true}, "Start " + a.Name + " here"})
+		out = append(out, wayOption{Way{Program: a.Program, Agent: true}, "Start " + a.Name + " here"})
 	}
 	return out
 }
