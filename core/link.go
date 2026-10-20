@@ -160,7 +160,7 @@ func (s *Store) recognize(ref, provider, kind string) (Link, string, error) {
 }
 
 // originForm is a GitHub remote URL, over HTTPS or SSH.
-var originForm = regexp.MustCompile(`^(?:https://(?:[^@/]+@)?github\.com/|ssh://git@github\.com/|git@github\.com:)([A-Za-z0-9-]+)/([\w.-]+?)(?:\.git)?/?$`)
+var originForm = regexp.MustCompile(`(?i)^(?:https://(?:[^@/]+@)?github\.com/|ssh://git@github\.com/|git@github\.com:)([A-Za-z0-9-]+)/([\w.-]+?)(?:\.git)?/?$`)
 
 // GitHubOrigin is the GitHub repository dir's origin remote points at, as a
 // link ref, or "" when origin is elsewhere or missing, or git is slow.

@@ -72,7 +72,7 @@ func TestAddOffersTheGitHubOriginAsTheTracker(t *testing.T) {
 		t.Skip("needs git")
 	}
 	dir := configDir(t)
-	t.Cleanup(func() { stdin = bufio.NewReader(os.Stdin) })
+	t.Cleanup(func() { stdin = bufio.NewReader(os.Stdin); stdinIsTerminal = isTerminal })
 	repo := func(name, origin string) string {
 		p := filepath.Join(dir, name)
 		mkdirs(t, p)
@@ -90,20 +90,23 @@ func TestAddOffersTheGitHubOriginAsTheTracker(t *testing.T) {
 
 	for _, c := range []struct {
 		name, origin, answer string // answer after the arguments prompt
-		link                 bool
+		terminal, link       bool
 	}{
-		{"enter", "git@github.com:acme/web.git", "\n", true},
-		{"yes", "https://github.com/acme/web.git", "y\n", true},
-		{"ssh", "ssh://git@github.com/acme/web", "Y\n", true},
-		{"no", "git@github.com:acme/web.git", "n\n", false},
-		{"other", "git@github.com:acme/web.git", "later\n", false},
-		{"agent", "git@github.com:acme/web.git", "", false}, // no terminal: no answer, never linked
-		{"gitlab", "git@gitlab.com:acme/web.git", "\n", false},
+		{"enter", "git@github.com:acme/web.git", "\n", true, true},
+		{"yes", "https://github.com/acme/web.git", "y\n", true, true},
+		{"ssh", "ssh://git@github.com/acme/web", "Y\n", true, true},
+		{"case", "git@GitHub.com:acme/web.git", "\n", true, true},
+		{"no", "git@github.com:acme/web.git", "n\n", true, false},
+		{"other", "git@github.com:acme/web.git", "later\n", true, false},
+		{"closed", "git@github.com:acme/web.git", "", true, false},
+		{"agent", "git@github.com:acme/web.git", "\n", false, false}, // a pipe holding Enter is still no person
+		{"gitlab", "git@gitlab.com:acme/web.git", "\n", true, false},
 	} {
 		stdin = bufio.NewReader(strings.NewReader("\n" + c.answer))
+		stdinIsTerminal = func() bool { return c.terminal }
 		t.Chdir(repo(c.name, c.origin))
 		out := run(t, "add", c.name)
-		if asked := strings.Contains(out, "https://github.com/acme/web"); asked != (c.name != "gitlab") {
+		if asked := strings.Contains(out, "https://github.com/acme/web"); asked != (c.terminal && c.name != "gitlab") {
 			t.Errorf("%s: asked %v: %q", c.name, asked, out)
 		}
 		if got := linked(c.name); c.link != reflect.DeepEqual(got, want) || !c.link && len(got) != 0 {

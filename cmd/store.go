@@ -36,12 +36,6 @@ func loadProjects() (projects []Project, err error) {
 	return projects, err
 }
 
-func appendProject(project Project) {
-	if err := withStore(func(s *core.Store) error { return s.AddProject(project) }); err != nil {
-		fmt.Fprintf(os.Stderr, "Error saving project: %v\n", err)
-	}
-}
-
 func updateProject(project Project) error {
 	return withStore(func(s *core.Store) error { return s.UpdateProject(project) })
 }

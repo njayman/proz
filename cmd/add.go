@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/njayman/proz/core"
 	"github.com/spf13/cobra"
 )
@@ -85,12 +86,17 @@ func saveProject(project Project) error {
 	if project.ID != 0 {
 		return updateProject(project)
 	}
-	appendProject(project)
-	return nil
+	return withStore(func(s *core.Store) error { return s.AddProject(project) })
 }
 
 // stdin is shared so successive prompts don't lose each other's buffered input.
 var stdin = bufio.NewReader(os.Stdin)
+
+// stdinIsTerminal reports whether a person can answer on stdin; tests
+// replace it to script one.
+var stdinIsTerminal = isTerminal
+
+func isTerminal() bool { return term.IsTerminal(os.Stdin.Fd()) }
 
 // register saves project, or, if its folder is named like an existing idea
 // and the user agrees, gives that idea the folder so one idea never becomes
@@ -138,8 +144,12 @@ func register(project Project) error {
 
 // offerGitHubLink asks whether to link the GitHub repository the folder's
 // origin points at as the project's tracker. Enter or yes links it; anything
-// else, or no answer at all (no terminal, as for agents), never does.
+// else never does. With no terminal (an agent) it is not asked at all, even
+// when a pipe holds a newline that would read as Enter.
 func offerGitHubLink(project Project) {
+	if !stdinIsTerminal() {
+		return
+	}
 	ref := core.GitHubOrigin(project.Path)
 	if ref == "" || slices.ContainsFunc(project.Links, func(l core.Link) bool { return l.Ref == ref }) {
 		return
@@ -157,9 +167,11 @@ func offerGitHubLink(project Project) {
 		}
 		id := project.ID
 		for _, p := range slices.Backward(projects) { // a new project is the newest one in its folder
-			if id == 0 && p.Name == project.Name && p.Path == project.Path {
-				id = p.ID
+			if id != 0 {
 				break
+			}
+			if p.Name == project.Name && p.Path == project.Path {
+				id = p.ID
 			}
 		}
 		_, err = s.AddLink(id, ref, "", "")
