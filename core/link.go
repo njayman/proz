@@ -76,9 +76,9 @@ func (e *UnknownHostError) Error() string {
 
 // AddLink links project id to ref, a URL or a short form (see expand). An
 // empty provider is recognized from the host: a preset, or one an earlier
-// link named. Naming one remembers it for that host. An
-// empty kind takes the provider's default; linking a ref the project already
-// has updates it.
+// link named. A named provider wins for this link and is remembered for its
+// host. An empty kind takes the provider's default; linking a ref the
+// project already has updates it.
 func (s *Store) AddLink(id int64, ref, provider, kind string) (Link, error) {
 	u, err := s.expand(ref)
 	if err != nil {
@@ -86,11 +86,11 @@ func (s *Store) AddLink(id int64, ref, provider, kind string) (Link, error) {
 	}
 	l := Link{Ref: u.String(), Provider: provider, Kind: kind}
 	if l.Provider != "" {
+		if !slices.Contains(Providers(), l.Provider) && l.Provider != "web" { // web, as proz prints it, is accepted back
+			return Link{}, fmt.Errorf("provider %q: want one of %s", provider, strings.Join(Providers(), ", "))
+		}
 		if l.Provider == "other" {
 			l.Provider = "web"
-		}
-		if presetKind[l.Provider] == "" && l.Provider != "brainmd" && l.Provider != "web" {
-			return Link{}, fmt.Errorf("provider %q: want one of %s", provider, strings.Join(Providers(), ", "))
 		}
 	} else if l.Provider = presetProvider(u.Host); l.Provider == "" {
 		var known string

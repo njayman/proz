@@ -57,7 +57,7 @@ func TestOtherIsStoredAsWebAndNeedsAKind(t *testing.T) {
 	}
 }
 
-func TestAPresetHostIsNeverRemembered(t *testing.T) {
+func TestAnExplicitProviderWinsButAPresetHostKeepsItsPreset(t *testing.T) {
 	s := open(t, t.TempDir())
 	s.AddIdea("web")
 	web := projectNamed(t, s, "web")
