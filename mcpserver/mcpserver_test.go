@@ -75,7 +75,7 @@ func TestToolNamesAreTheContract(t *testing.T) {
 		}
 	}
 	slices.Sort(names)
-	want := []string{"capture_idea", "get_project", "list_nudges", "list_projects", "read_brain_note", "record_milestone"}
+	want := []string{"add_link", "capture_idea", "get_project", "list_nudges", "list_projects", "read_brain_note", "record_milestone"}
 	if !reflect.DeepEqual(names, want) {
 		t.Fatalf("got %v", names)
 	}
@@ -154,6 +154,30 @@ func TestProjectArgumentsAreValidated(t *testing.T) {
 	}
 	if res := call(t, cs, "capture_idea", map[string]any{"text": " "}, nil); !res.IsError {
 		t.Error("blank idea: want a tool error")
+	}
+}
+
+func TestAddLink(t *testing.T) {
+	now := t0
+	cs, dir := connect(t, &now)
+	project := t.TempDir()
+	s, _ := core.Open(dir, func() time.Time { return t0 })
+	s.AddProject(core.Project{Name: "web", Path: project})
+	s.Close()
+
+	res := call(t, cs, "add_link", map[string]any{"dir": project, "ref": "https://tasks.example.com/web"}, nil)
+	if !res.IsError || !strings.Contains(res.Content[0].(*mcp.TextContent).Text, "brainmd") {
+		t.Fatalf("unknown host: want a tool error naming the choices, got %+v", res.Content)
+	}
+	var got map[string]any
+	call(t, cs, "add_link", map[string]any{"project": "web", "ref": "https://tasks.example.com/web", "provider": "other", "kind": "tracker"}, &got)
+	if want := map[string]any{"kind": "tracker", "provider": "web", "ref": "https://tasks.example.com/web", "missing": false}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("add_link: %v", got)
+	}
+	var p struct{ Links []map[string]any }
+	call(t, cs, "get_project", map[string]any{"project": "web"}, &p)
+	if len(p.Links) != 1 || p.Links[0]["provider"] != "web" {
+		t.Fatalf("get_project links: %v", p.Links)
 	}
 }
 

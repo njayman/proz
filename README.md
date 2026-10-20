@@ -130,7 +130,7 @@ Log in again to start it (Sway runs `exec` at login, not on reload). The service
 
 ### `proz mcp`
 
-Serves proz to an agent over MCP on stdio, as a child process with no network listener. Tools: `list_projects`, `get_project`, `record_milestone`, `capture_idea`, `list_nudges` and `read_brain_note`, returning the same fields as the `--json` commands. The proz Claude Code plugin registers it; for other clients, configure the command `proz mcp`.
+Serves proz to an agent over MCP on stdio, as a child process with no network listener. Tools: `list_projects`, `get_project`, `record_milestone`, `capture_idea`, `list_nudges`, `read_brain_note` and `add_link`, returning the same fields as the `--json` commands. The proz Claude Code plugin registers it; for other clients, configure the command `proz mcp`.
 
 ### `proz check [--json]`
 
