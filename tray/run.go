@@ -48,7 +48,7 @@ func onReady(d Deps) {
 		close(done)
 		done = make(chan struct{})
 		systray.ResetMenu()
-		if v.Open {
+		if v.OfferLauncher {
 			on(systray.AddMenuItem("Open proz", "Open the launcher"), done, func() {
 				if err := d.OpenLauncher(); err != nil {
 					d.Log(err)
@@ -76,7 +76,7 @@ func onReady(d Deps) {
 	}
 	// the menu at once, its projects once their git status is in
 	mu.Lock()
-	render(View{Loading: true, Tooltip: "proz: checking projects", Open: d.OpenLauncher != nil})
+	render(View{Loading: true, Tooltip: "proz: checking projects", OfferLauncher: d.OpenLauncher != nil})
 	mu.Unlock()
 	go watchOff(d.Enabled, offPoll, systray.Quit)
 	go func() {

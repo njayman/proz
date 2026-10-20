@@ -109,13 +109,13 @@ func TestPickingASnoozeLengthSnoozesThatManyDaysAndRefreshesTheMenu(t *testing.T
 func TestOpenProzIsOfferedOnlyWhenThisBinaryHasTheLauncher(t *testing.T) {
 	nudges := func() ([]core.Status, error) { return nil, nil }
 	v, _ := snapshot(Deps{Nudges: nudges, OpenLauncher: func() error { return nil }})
-	if !v.Open {
+	if !v.OfferLauncher {
 		t.Fatal("a GUI build offers Open proz")
 	}
-	if v, _ := snapshot(Deps{Nudges: func() ([]core.Status, error) { return nil, errors.New("locked") }, OpenLauncher: func() error { return nil }}); !v.Open {
+	if v, _ := snapshot(Deps{Nudges: func() ([]core.Status, error) { return nil, errors.New("locked") }, OpenLauncher: func() error { return nil }}); !v.OfferLauncher {
 		t.Fatal("Open proz stays when the store cannot be read")
 	}
-	if v, _ := snapshot(Deps{Nudges: nudges}); v.Open {
+	if v, _ := snapshot(Deps{Nudges: nudges}); v.OfferLauncher {
 		t.Fatal("a build without the GUI has no Open proz")
 	}
 }
