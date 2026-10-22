@@ -28,6 +28,9 @@ var moduleDefaults = map[Module]bool{
 // Modules lists every module, in a stable order.
 var Modules = []Module{ModuleNotifications, ModuleTray, ModuleEmail, ModuleBrain, ModulePrompts}
 
+// ErrNoSMTP is why email cannot switch on yet.
+var ErrNoSMTP = errors.New("configure SMTP first: proz config smtp")
+
 func (s *Store) ModuleOn(m Module) (bool, error) {
 	def, ok := moduleDefaults[m]
 	if !ok {
@@ -47,7 +50,7 @@ func (s *Store) SetModule(m Module, on bool) error {
 	}
 	if m == ModuleEmail && on {
 		if _, ok, err := s.SMTP(); err != nil || !ok {
-			return errors.Join(errors.New("configure SMTP first: proz config smtp"), err)
+			return errors.Join(ErrNoSMTP, err)
 		}
 	}
 	if m == ModuleBrain && on {

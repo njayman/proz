@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/charmbracelet/x/term"
+	"github.com/njayman/proz/core"
 	"github.com/spf13/cobra"
 )
 
@@ -83,7 +85,7 @@ var listCmd = &cobra.Command{
 			return
 		}
 		if selected.Path == "" {
-			if err := launch(*selected, ""); err != nil { // opening an idea still counts as activity
+			if err := launch(*selected, "", ""); err != nil { // opening an idea still counts as activity
 				fmt.Fprintf(os.Stderr, "Warning: could not record the launch: %v\n", err)
 			}
 			fmt.Fprintf(os.Stderr, "'%s' is an idea with no folder yet. Run 'proz add' in its folder to attach one.\n", selected.Name)
@@ -105,7 +107,11 @@ var listCmd = &cobra.Command{
 
 		program := chooseProgram(*selected)
 
-		if err := launch(*selected, program); err != nil {
+		folder, ok := chooseFolder(*selected)
+		if !ok {
+			return
+		}
+		if err := launch(*selected, folder, program); err != nil {
 			fmt.Fprintf(os.Stderr, "Error launching %s: %v\n", program, err)
 		}
 
@@ -154,6 +160,38 @@ func applyListOptions(projects []Project) ([]Project, error) {
 	}
 
 	return projects, nil
+}
+
+// chooseFolder is where to open p: with several folders or worktrees and a
+// terminal, the one the user picks, starting at the one worked in last;
+// otherwise "" for the main folder. ok is false when the user backs out.
+func chooseFolder(p Project) (folder string, ok bool) {
+	if len(p.Folders) == 0 || !term.IsTerminal(os.Stdin.Fd()) { // agents and launchers never pay for the scan
+		return "", true
+	}
+	var checkouts []core.Checkout
+	// ponytail: a store error opens the main folder; the launch that follows reports it
+	if withStore(func(s *core.Store) (err error) { checkouts, err = s.Checkouts(p); return err }) != nil || len(checkouts) < 2 {
+		return "", true
+	}
+	labels := make([]string, len(checkouts))
+	for i, c := range checkouts {
+		labels[i] = c.Path
+		switch {
+		case c.Main:
+			labels[i] += " (main folder)"
+		case c.Worktree:
+			labels[i] += " (worktree)"
+		}
+	}
+	choice, err := runSelectPicker("Choose a folder to open", labels)
+	if err != nil {
+		return "", true
+	}
+	if choice < 0 {
+		return "", false
+	}
+	return checkouts[choice].Path, true
 }
 
 // chooseProgram is the project's program, asking which when it has several.

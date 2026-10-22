@@ -27,7 +27,7 @@ func TestIdeaIsStaleOnRegistrationLaunchAndMilestoneOnly(t *testing.T) {
 	if len(ns) != 1 || !ns[0].LastActivity.Equal(t0.Add(3*day)) {
 		t.Fatalf("want idea stale since its milestone, got %+v", ns)
 	}
-	if _, err := s.Launch(idea, "", true); err != nil {
+	if _, err := s.Launch(idea, "", "", true); err != nil {
 		t.Fatal(err)
 	}
 	if ns := nudgesAt(t, s); len(ns) != 0 {
@@ -71,5 +71,32 @@ func TestIdeaForMatchesAFolderNamedLikeTheIdea(t *testing.T) {
 	}
 	if _, err := s.IdeaFor("/code/proz"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("attached idea should not match again, got %v", err)
+	}
+}
+
+func TestProjectNameCollapsesSpacesAndNeedsText(t *testing.T) {
+	if got, err := ProjectName("  habit \n tracker "); err != nil || got != "habit tracker" {
+		t.Fatalf("got %q, %v", got, err)
+	}
+	if _, err := ProjectName(" \t"); !errors.Is(err, ErrNoName) {
+		t.Fatalf("blank: %v", err)
+	}
+	if _, err := open(t, t.TempDir()).AddIdea(" "); !errors.Is(err, ErrNoName) {
+		t.Fatalf("a blank idea: %v", err)
+	}
+}
+
+func TestNewProjectReturnsItWithItsID(t *testing.T) {
+	s := open(t, t.TempDir())
+	if err := s.AddProject(Project{Name: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.NewProject(Project{Name: "second", Programs: []string{"code"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.ProjectNamed("second")
+	if err != nil || p.ID == 0 || got.ID != p.ID || p.Name != "second" {
+		t.Fatalf("returned %+v, stored %+v, %v", p, got, err)
 	}
 }

@@ -75,7 +75,7 @@ func TestToolNamesAreTheContract(t *testing.T) {
 		}
 	}
 	slices.Sort(names)
-	want := []string{"capture_idea", "get_project", "list_nudges", "list_projects", "read_brain_note", "record_milestone"}
+	want := []string{"add_link", "capture_idea", "get_project", "list_nudges", "list_projects", "read_brain_note", "record_milestone"}
 	if !reflect.DeepEqual(names, want) {
 		t.Fatalf("got %v", names)
 	}
@@ -102,7 +102,7 @@ func TestToolsEndToEndWithPinnedFields(t *testing.T) {
 		t.Fatalf("record_milestone by dir: %v", ms)
 	}
 
-	statusFields := []string{"last_activity", "milestones", "name", "note", "path", "quiet_days", "quiet_seconds", "short_note", "stale", "state"}
+	statusFields := []string{"folders", "last_activity", "links", "milestones", "name", "note", "path", "quiet_days", "quiet_seconds", "short_note", "stale", "state"}
 	var byDir map[string]any
 	call(t, cs, "get_project", map[string]any{"dir": project}, &byDir)
 	if byDir["name"] != "web" {
@@ -126,7 +126,7 @@ func TestToolsEndToEndWithPinnedFields(t *testing.T) {
 	now = t0.Add(10 * 24 * time.Hour)
 	var nudges struct{ Nudges []map[string]any }
 	call(t, cs, "list_nudges", nil, &nudges)
-	nudgeFields := []string{"last_activity", "name", "note", "path", "quiet_days", "quiet_seconds", "short_note"}
+	nudgeFields := []string{"folders", "last_activity", "links", "name", "note", "path", "quiet_days", "quiet_seconds", "short_note"}
 	if len(nudges.Nudges) != 2 || !reflect.DeepEqual(keys(nudges.Nudges[0]), nudgeFields) {
 		t.Fatalf("list_nudges: %v", nudges.Nudges)
 	}
@@ -154,6 +154,30 @@ func TestProjectArgumentsAreValidated(t *testing.T) {
 	}
 	if res := call(t, cs, "capture_idea", map[string]any{"text": " "}, nil); !res.IsError {
 		t.Error("blank idea: want a tool error")
+	}
+}
+
+func TestAddLink(t *testing.T) {
+	now := t0
+	cs, dir := connect(t, &now)
+	project := t.TempDir()
+	s, _ := core.Open(dir, func() time.Time { return t0 })
+	s.AddProject(core.Project{Name: "web", Path: project})
+	s.Close()
+
+	res := call(t, cs, "add_link", map[string]any{"dir": project, "ref": "https://tasks.example.com/web"}, nil)
+	if !res.IsError || !strings.Contains(res.Content[0].(*mcp.TextContent).Text, "brainmd") {
+		t.Fatalf("unknown host: want a tool error naming the choices, got %+v", res.Content)
+	}
+	var got, again map[string]any
+	call(t, cs, "add_link", map[string]any{"project": "web", "ref": "https://tasks.example.com/web", "provider": "other", "kind": "tracker"}, &got)
+	link := map[string]any{"kind": "tracker", "provider": "web", "ref": "https://tasks.example.com/web", "missing": false}
+	if links, _ := got["links"].([]any); len(links) != 1 || !reflect.DeepEqual(links[0], link) {
+		t.Fatalf("add_link returns the project with its links: %v", got)
+	}
+	call(t, cs, "get_project", map[string]any{"project": "web"}, &again)
+	if !reflect.DeepEqual(got, again) {
+		t.Fatalf("add_link returns what get_project does:\n%v\n%v", got, again)
 	}
 }
 

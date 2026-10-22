@@ -26,7 +26,12 @@ var ErrNoTerminal = errors.New("set the terminal setting with: proz config termi
 var terminalPrograms = map[string]bool{
 	"vi": true, "vim": true, "nvim": true, "hx": true, "helix": true, "nano": true,
 	"micro": true, "kak": true, "lazygit": true, "tig": true,
-	"claude": true, "codex": true, "gemini": true, "opencode": true, "aider": true,
+}
+
+func init() {
+	for _, a := range KnownAgentCLIs { // agent CLIs are terminal programs
+		terminalPrograms[a.Program] = true
+	}
 }
 
 // NeedsTerminal is whether a program runs in a terminal, and whether that is
@@ -168,23 +173,66 @@ func runForm(t, dir string, exact bool) []string {
 }
 
 // LaunchTerminal records a launch of p and returns the command that opens a
-// terminal in its folder: the user's shell when the caller has a terminal,
-// else a new window of the user's terminal emulator. An idea with no folder
-// returns a nil command.
-func (s *Store) LaunchTerminal(p Project, attached bool) (*exec.Cmd, error) {
-	if err := s.recordLaunch(p); err != nil || p.Path == "" {
+// terminal in folder, as Launch takes it: the user's shell when the caller
+// has a terminal, else a new window of the user's terminal emulator. An idea
+// with no folder returns a nil command.
+func (s *Store) LaunchTerminal(p Project, folder string, attached bool) (*exec.Cmd, error) {
+	return s.launchInFolder(p, folder, nil, attached)
+}
+
+// AgentCLI is a coding agent's command-line program, which proz can start
+// in a project's folder.
+type AgentCLI struct {
+	Name    string // as people call it, such as "Claude Code"
+	Program string
+}
+
+// KnownAgentCLIs are the agent CLIs the launcher offers when they are on PATH.
+var KnownAgentCLIs = []AgentCLI{{"Claude Code", "claude"}, {"Codex", "codex"}, {"Gemini CLI", "gemini"}, {"opencode", "opencode"}, {"aider", "aider"}}
+
+// AgentCLIsOnPath are the known agent CLIs installed here, in KnownAgentCLIs' order.
+func AgentCLIsOnPath() []AgentCLI {
+	var out []AgentCLI
+	for _, a := range KnownAgentCLIs {
+		if _, err := exec.LookPath(a.Program); err == nil {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// LaunchAgent records a launch of p and returns the command that starts the
+// agent program in folder, as Launch takes it, with no arguments (the
+// project's arguments belong to its own programs), in the user's terminal
+// unless one is attached.
+func (s *Store) LaunchAgent(p Project, folder, agent string, attached bool) (*exec.Cmd, error) {
+	return s.launchInFolder(p, folder, []string{agent}, attached)
+}
+
+// launchInFolder records a launch of p and returns the command that runs
+// program in folder, as Launch takes it, or the user's shell when program is
+// empty, wrapped in the user's terminal unless one is attached. An idea opens
+// nothing.
+func (s *Store) launchInFolder(p Project, folder string, program []string, attached bool) (*exec.Cmd, error) {
+	dir, err := s.openIn(p, folder)
+	if err != nil {
 		return nil, err
 	}
-	args := []string{cmp.Or(os.Getenv("SHELL"), os.Getenv("ComSpec"), "/bin/sh")}
+	if err := s.recordLaunch(p); err != nil || dir == "" {
+		return nil, err
+	}
+	args := program
+	if len(args) == 0 {
+		args = []string{cmp.Or(os.Getenv("SHELL"), os.Getenv("ComSpec"), "/bin/sh")}
+	}
 	newConsole := false
 	if !attached {
-		var err error
-		if args, newConsole, err = s.runInTerminal(p.Path, nil); err != nil {
+		if args, newConsole, err = s.runInTerminal(dir, program); err != nil {
 			return nil, fmt.Errorf("no terminal found to open %s in; %w", p.Name, err)
 		}
 	}
 	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Dir = p.Path
+	cmd.Dir = dir
 	if newConsole {
 		setNewConsole(cmd)
 	}

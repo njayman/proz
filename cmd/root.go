@@ -3,11 +3,29 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
 
+// version is stamped by release builds: -ldflags "-X github.com/njayman/proz/cmd.version=1.2.3".
+var version string
+
+// resolveVersion prefers the stamped version, then the module version that
+// `go install ...@v1.2.3` records, so every build answers --version.
+func resolveVersion(stamped string) string {
+	if stamped != "" {
+		return stamped
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return strings.TrimPrefix(info.Main.Version, "v") // as release builds stamp it
+	}
+	return "dev"
+}
+
 func init() {
+	rootCmd.Version = resolveVersion(version)
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
 	rootCmd.SilenceUsage = true  // a failed command's error is not a usage mistake
 	rootCmd.SilenceErrors = true // Execute prints it once

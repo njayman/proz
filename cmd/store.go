@@ -36,12 +36,6 @@ func loadProjects() (projects []Project, err error) {
 	return projects, err
 }
 
-func appendProject(project Project) {
-	if err := withStore(func(s *core.Store) error { return s.AddProject(project) }); err != nil {
-		fmt.Fprintf(os.Stderr, "Error saving project: %v\n", err)
-	}
-}
-
 func updateProject(project Project) error {
 	return withStore(func(s *core.Store) error { return s.UpdateProject(project) })
 }
@@ -66,16 +60,21 @@ func loadRecentPrograms() (programs []string) {
 	return programs
 }
 
-// launch opens project with program. In a terminal the program runs there;
-// without one (rofi, wofi) core opens terminal programs in the user's terminal.
-func launch(project Project, program string) error {
-	return runLaunch(func(s *core.Store, attached bool) (*exec.Cmd, error) { return s.Launch(project, program, attached) })
+// launch opens project with program in folder (empty: its main folder). In a
+// terminal the program runs there; without one (rofi, wofi) core opens
+// terminal programs in the user's terminal.
+func launch(project Project, folder, program string) error {
+	return runLaunch(func(s *core.Store, attached bool) (*exec.Cmd, error) {
+		return s.Launch(project, folder, program, attached)
+	})
 }
 
-// launchTerminal opens a terminal in project's folder: the shell here when
-// in a terminal, else a new terminal window.
-func launchTerminal(project Project) error {
-	return runLaunch(func(s *core.Store, attached bool) (*exec.Cmd, error) { return s.LaunchTerminal(project, attached) })
+// launchTerminal opens a terminal in folder (empty: the project's main
+// folder): the shell here when in a terminal, else a new terminal window.
+func launchTerminal(project Project, folder string) error {
+	return runLaunch(func(s *core.Store, attached bool) (*exec.Cmd, error) {
+		return s.LaunchTerminal(project, folder, attached)
+	})
 }
 
 // runLaunch gets a launch command from core and runs it, attached to this
@@ -105,8 +104,9 @@ func runLaunch(get func(s *core.Store, attached bool) (*exec.Cmd, error)) error 
 
 // startDetached starts cmd on its own. In a long-running process (the tray)
 // it is reaped when it exits, so no zombie lingers; when proz exits first,
-// init reaps it.
+// init reaps it. It runs in its own session, so it outlives the tray.
 func startDetached(cmd *exec.Cmd) error {
+	ownSession(cmd)
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -124,4 +124,24 @@ func findProject(name string) (p Project, err error) {
 		err = fmt.Errorf("project %q not found", name)
 	}
 	return p, err
+}
+
+// changeProject applies change, then prints project id as 'list --json'
+// prints a project, or the message done gives.
+func changeProject(id int64, asJSON bool, change func(*core.Store) error, done func(core.Project) string) error {
+	var p core.Project
+	if err := withStore(func(s *core.Store) (err error) {
+		if err := change(s); err != nil {
+			return err
+		}
+		p, err = s.Project(id)
+		return err
+	}); err != nil {
+		return err
+	}
+	if asJSON {
+		return printJSON(p)
+	}
+	fmt.Println(done(p))
+	return nil
 }

@@ -26,6 +26,35 @@ type SMTP struct {
 
 const smtpFile = "smtp.json"
 
+// DefaultSMTPPort is the port a new mail server starts on.
+const DefaultSMTPPort = 587
+
+// ErrPasswordAgain refuses to send a saved password to a new host or username.
+var ErrPasswordAgain = errors.New("a new host or username needs its password again")
+
+// SaveSMTP saves c as the mail server with password, or with the saved
+// password when password is nil. The saved password never goes to a new
+// host or username: that needs it given again. The first mail server saved
+// switches email on; later edits keep email as it was.
+func (s *Store) SaveSMTP(c SMTP, password *string) error {
+	old, ok, err := s.SMTP()
+	if err != nil {
+		return err
+	}
+	switch {
+	case password != nil:
+		c.Password = *password
+	case ok && old.Password != "" && (c.Host != old.Host || c.Username != old.Username):
+		return ErrPasswordAgain
+	default:
+		c.Password = old.Password
+	}
+	if err := s.SetSMTP(c); err != nil || ok {
+		return err
+	}
+	return s.SetModule(ModuleEmail, true)
+}
+
 const digestRetry = time.Hour
 
 // SMTP reads the SMTP settings; ok is false when none are configured.

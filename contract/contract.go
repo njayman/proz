@@ -11,19 +11,23 @@ import (
 
 // Nudge is one project in nudges, archived and check output.
 type Nudge struct {
-	Name         string `json:"name"`
-	Path         string `json:"path"`
-	LastActivity string `json:"last_activity"`
-	QuietDays    int    `json:"quiet_days"`
-	QuietSeconds int64  `json:"quiet_seconds"`
-	Note         string `json:"note"`
-	ShortNote    string `json:"short_note"`
+	Name         string        `json:"name"`
+	Path         string        `json:"path"`
+	Folders      []core.Folder `json:"folders"`
+	Links        []core.Link   `json:"links"`
+	LastActivity string        `json:"last_activity"`
+	QuietDays    int           `json:"quiet_days"`
+	QuietSeconds int64         `json:"quiet_seconds"`
+	Note         string        `json:"note"`
+	ShortNote    string        `json:"short_note"`
 }
 
 func NewNudge(s core.Status) Nudge {
 	return Nudge{
 		Name:         s.Name,
 		Path:         s.Path,
+		Folders:      append([]core.Folder{}, s.Folders...),
+		Links:        append([]core.Link{}, s.Links...),
 		LastActivity: s.LastActivity.UTC().Format(time.RFC3339),
 		QuietDays:    int(s.Quiet / (24 * time.Hour)),
 		QuietSeconds: int64(s.Quiet / time.Second),
@@ -63,6 +67,12 @@ func NewStatus(st core.Status, milestones []core.Milestone) Status {
 		out.Milestones = append(out.Milestones, Milestone{m.Text, m.At.UTC().Format(time.RFC3339)})
 	}
 	return out
+}
+
+// ThemeSetting is the launcher's look, as 'proz config theme --json'
+// prints it: system, light or dark.
+type ThemeSetting struct {
+	Theme string `json:"theme"`
 }
 
 // TerminalSetting is the terminal proz opens terminal programs in, as

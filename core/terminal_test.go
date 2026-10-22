@@ -84,7 +84,7 @@ func project(t *testing.T, s *Store) Project {
 
 func launchArgs(t *testing.T, s *Store, p Project, program string, attached bool) []string {
 	t.Helper()
-	cmd, err := s.Launch(p, program, attached)
+	cmd, err := s.Launch(p, "", program, attached)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestNoTerminalNamesTheSettingAndStillCountsAsActivity(t *testing.T) {
 	p := project(t, s)
 
 	c.t = t0.Add(5 * day)
-	_, err := s.Launch(p, "nvim", false)
+	_, err := s.Launch(p, "", "nvim", false)
 	if err == nil || !strings.Contains(err.Error(), "proz config terminal") {
 		t.Fatalf("want an error naming the setting, got %v", err)
 	}
@@ -416,7 +416,7 @@ func TestTerminalOnlyOpensTheTerminalInTheProjectFolder(t *testing.T) {
 			p := project(t, s)
 			c.t = t0.Add(5 * day)
 
-			cmd, err := s.LaunchTerminal(p, false)
+			cmd, err := s.LaunchTerminal(p, "", false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -439,7 +439,7 @@ func TestTerminalOnlyWithATerminalStartsTheShell(t *testing.T) {
 	s := open(t, t.TempDir())
 	p := project(t, s)
 
-	cmd, err := s.LaunchTerminal(p, true)
+	cmd, err := s.LaunchTerminal(p, "", true)
 	if err != nil || !reflect.DeepEqual(cmd.Args, []string{"/bin/zsh"}) || cmd.Dir != p.Path {
 		t.Fatalf("got %v in %q, %v", cmd.Args, cmd.Dir, err)
 	}
@@ -450,7 +450,36 @@ func TestTerminalOnlyWithNoTerminalNamesTheSetting(t *testing.T) {
 	s := open(t, t.TempDir())
 	p := project(t, s)
 
-	if _, err := s.LaunchTerminal(p, false); err == nil || !strings.Contains(err.Error(), "proz config terminal") {
+	if _, err := s.LaunchTerminal(p, "", false); err == nil || !strings.Contains(err.Error(), "proz config terminal") {
 		t.Fatalf("want an error naming the setting, got %v", err)
+	}
+}
+
+func TestAnAgentStartsInTheFolderWithNoArgumentsInTheUsersTerminal(t *testing.T) {
+	fakePath(t, "alacritty", "claude")
+	t.Setenv("TERMINAL", "alacritty")
+	c := &clock{t0}
+	s := openAt(t, c)
+	p := project(t, s)
+	p.Arguments = []string{"--new-window"} // the project's program's, never the agent's
+	c.t = t0.Add(5 * day)
+
+	cmd, err := s.LaunchAgent(p, "", "claude", false)
+	if want := []string{"alacritty", "--working-directory", p.Path, "-e", "claude"}; err != nil || !reflect.DeepEqual(cmd.Args, want) || cmd.Dir != p.Path {
+		t.Fatalf("got %v in %q, %v; want %v", cmd.Args, cmd.Dir, err, want)
+	}
+	if st, _ := s.Status(p.ID); !st.LastActivity.Equal(t0.Add(5 * day)) {
+		t.Fatalf("want the launch recorded, got %v", st.LastActivity)
+	}
+	if cmd, err := s.LaunchAgent(p, "", "claude", true); err != nil || !reflect.DeepEqual(cmd.Args, []string{"claude"}) {
+		t.Fatalf("in a terminal: got %v, %v", cmd.Args, err)
+	}
+}
+
+func TestAgentCLIsOnPathAreTheKnownOnesFoundInOrder(t *testing.T) {
+	fakePath(t, "aider", "claude")
+	want := []AgentCLI{{"Claude Code", "claude"}, {"aider", "aider"}}
+	if got := AgentCLIsOnPath(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %+v, want %+v", got, want)
 	}
 }

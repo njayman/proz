@@ -44,6 +44,8 @@ var trayCmd = &cobra.Command{
 			Snooze: traySnooze,
 			Drop:   func(id int64) error { return withStore(func(s *core.Store) error { return s.Drop(id) }) },
 			Log:    func(err error) { fmt.Fprintf(os.Stderr, "proz tray: %v\n", err) },
+
+			OpenLauncher: openLauncher,
 		})
 	},
 }
@@ -88,7 +90,7 @@ func resumeTray(id int64) error {
 		if len(p.Programs) > 0 {
 			program = p.Programs[0]
 		}
-		cmd, err = s.Launch(p, program, false)
+		cmd, err = s.Launch(p, "", program, false)
 		return err
 	}); err != nil {
 		return err

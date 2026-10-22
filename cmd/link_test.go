@@ -1,0 +1,176 @@
+package cmd
+
+import (
+	"bufio"
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/njayman/proz/core"
+)
+
+// linksJSON decodes the links of the project a command printed as JSON.
+func linksJSON(t *testing.T, out string) []core.Link {
+	t.Helper()
+	var p struct {
+		Links []core.Link `json:"links"`
+	}
+	if err := json.Unmarshal([]byte(out), &p); err != nil || p.Links == nil {
+		t.Fatalf("%v: %q", err, out)
+	}
+	return p.Links
+}
+
+func TestLinkToAToolProzDoesNotRecognize(t *testing.T) {
+	configDir(t)
+	run(t, "idea", "web")
+	err := execute("link", "https://tasks.example.com/web", "web")
+	if err == nil {
+		t.Fatal("an unknown host with no --provider must fail")
+	}
+	for _, choice := range []string{"--provider", "github", "linear", "jira", "trello", "asana", "todoist", "notion", "brainmd", "other", "--kind", "tracker", "brain"} {
+		if !strings.Contains(err.Error(), choice) {
+			t.Errorf("error %q does not name %s", err, choice)
+		}
+	}
+	if out := run(t, "link", "https://tasks.example.com/web", "web", "--provider", "other", "--kind", "tracker"); out != "Linked web to tasks.example.com, as a tracker: https://tasks.example.com/web\n" {
+		t.Fatalf("other is shown by its domain: %q", out)
+	}
+	got := linksJSON(t, run(t, "link", "https://tasks.example.com/api", "web", "--json"))
+	if want := (core.Link{Kind: "tracker", Provider: "web", Ref: "https://tasks.example.com/api"}); len(got) != 2 || got[1] != want {
+		t.Fatalf("the host is remembered: %+v", got)
+	}
+	if got := linksJSON(t, run(t, "link", "acme/web#3", "web", "--json")); got[2].Ref != "https://github.com/acme/web/issues/3" {
+		t.Fatalf("short form: %+v", got)
+	}
+}
+
+func TestLinkALocalNotesFolder(t *testing.T) {
+	dir := configDir(t)
+	run(t, "idea", "web")
+	vault := filepath.Join(dir, "vault")
+	mkdirs(t, filepath.Join(vault, ".obsidian"), filepath.Join(vault, "web"))
+	t.Chdir(vault)
+	got := linksJSON(t, run(t, "link", "web", "web", "--json")) // a folder here wins over owner/repo
+	notes, _ := filepath.EvalSymlinks(filepath.Join(vault, "web"))
+	if want := (core.Link{Kind: "brain", Provider: "obsidian", Ref: notes}); len(got) != 1 || got[0] != want {
+		t.Fatalf("got %+v", got)
+	}
+	os.RemoveAll(notes)
+	if out := run(t, "status", "web"); !strings.Contains(out, "Link missing: "+notes) {
+		t.Fatalf("status: %q", out)
+	}
+	run(t, "unlink", notes, "web")
+}
+
+func TestAddOffersTheGitHubOriginAsTheTracker(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("needs git")
+	}
+	dir := configDir(t)
+	t.Cleanup(func() { stdin = bufio.NewReader(os.Stdin); stdinIsTerminal = isTerminal })
+	repo := func(name, origin string) string {
+		p := filepath.Join(dir, name)
+		mkdirs(t, p)
+		for _, args := range [][]string{{"init", "-q"}, {"remote", "add", "origin", origin}} {
+			if out, err := exec.Command("git", append([]string{"-C", p}, args...)...).CombinedOutput(); err != nil {
+				t.Fatalf("git %v: %s", args, out)
+			}
+		}
+		return p
+	}
+	linked := func(name string) []core.Link {
+		return linksJSON(t, run(t, "status", name, "--json"))
+	}
+	want := []core.Link{{Kind: "tracker", Provider: "github", Ref: "https://github.com/acme/web"}}
+
+	for _, c := range []struct {
+		name, origin, answer string // answer after the arguments prompt
+		terminal, link       bool
+	}{
+		{"enter", "git@github.com:acme/web.git", "\n", true, true},
+		{"yes", "https://github.com/acme/web.git", "y\n", true, true},
+		{"ssh", "ssh://git@github.com/acme/web", "Y\n", true, true},
+		{"case", "git@GitHub.com:acme/web.git", "\n", true, true},
+		{"no", "git@github.com:acme/web.git", "n\n", true, false},
+		{"other", "git@github.com:acme/web.git", "later\n", true, false},
+		{"closed", "git@github.com:acme/web.git", "", true, false},
+		{"agent", "git@github.com:acme/web.git", "\n", false, false}, // a pipe holding Enter is still no person
+		{"gitlab", "git@gitlab.com:acme/web.git", "\n", true, false},
+	} {
+		stdin = bufio.NewReader(strings.NewReader("\n" + c.answer))
+		stdinIsTerminal = func() bool { return c.terminal }
+		t.Chdir(repo(c.name, c.origin))
+		out := run(t, "add", c.name)
+		if asked := strings.Contains(out, "https://github.com/acme/web"); asked != (c.terminal && c.name != "gitlab") {
+			t.Errorf("%s: asked %v: %q", c.name, asked, out)
+		}
+		if got := linked(c.name); c.link != reflect.DeepEqual(got, want) || !c.link && len(got) != 0 {
+			t.Errorf("%s: links %+v", c.name, got)
+		}
+	}
+}
+
+// Agents parse the links array on every project; field names are a contract.
+func TestLinkAndUnlinkAKnownTool(t *testing.T) {
+	dir := configDir(t)
+	web := filepath.Join(dir, "web")
+	mkdirs(t, filepath.Join(web, "src"))
+	run(t, web) // no terminal: registered with no program
+	repo := core.Link{Kind: "tracker", Provider: "github", Ref: "https://github.com/acme/web"}
+	page := core.Link{Kind: "tracker", Provider: "notion", Ref: "https://www.notion.so/acme/Tasks-89ab"}
+
+	t.Chdir(filepath.Join(web, "src"))
+	if got := linksJSON(t, run(t, "link", "HTTPS://GitHub.com/acme/web/", "--json")); !reflect.DeepEqual(got, []core.Link{repo}) {
+		t.Fatalf("link here: %+v", got)
+	}
+	t.Chdir(dir)
+	if out := run(t, "link", page.Ref, "web", "--kind", "tracker"); out != "Linked web to notion, as a tracker: "+page.Ref+"\n" {
+		t.Fatalf("plain: %q", out)
+	}
+	want := `"links": [
+    {
+      "kind": "tracker",
+      "provider": "github",
+      "ref": "https://github.com/acme/web",
+      "missing": false
+    },
+    {
+      "kind": "tracker",
+      "provider": "notion",
+      "ref": "https://www.notion.so/acme/Tasks-89ab",
+      "missing": false
+    }
+  ]`
+	if out := run(t, "status", "web", "--json"); !strings.Contains(out, want) {
+		t.Fatalf("status --json:\n%s", out)
+	}
+	var list []struct {
+		Links []core.Link `json:"links"`
+	}
+	json.Unmarshal([]byte(run(t, "list", "--json")), &list)
+	if len(list) != 1 || !reflect.DeepEqual(list[0].Links, []core.Link{repo, page}) {
+		t.Fatalf("list --json: %+v", list)
+	}
+
+	if got := linksJSON(t, run(t, "unlink", "https://github.com/acme/web", "web", "--json")); !reflect.DeepEqual(got, []core.Link{page}) {
+		t.Fatalf("unlink: %+v", got)
+	}
+	if out := run(t, "unlink", page.Ref, "web"); out != "Unlinked "+page.Ref+" from web.\n" {
+		t.Fatalf("plain unlink: %q", out)
+	}
+	for _, args := range [][]string{
+		{"unlink", page.Ref, "web"}, // no longer linked
+		{"link", page.Ref},          // dir is in no project
+		{"link", page.Ref, "nope"},  // no such project
+		{"link", page.Ref, "web", "--kind", "tasks"},
+	} {
+		if execute(args...) == nil {
+			t.Errorf("%v: want an error", args)
+		}
+	}
+}
