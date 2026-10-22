@@ -22,7 +22,8 @@ const DefaultWorkspace = "default"
 type Project struct {
 	ID        int64    `json:"-"`
 	Name      string   `json:"name"`
-	Path      string   `json:"path"`
+	Path      string   `json:"path"` // the main folder; empty for an idea
+	Folders   []Folder `json:"folders"`
 	Programs  []string `json:"programs,omitempty"`
 	Arguments []string `json:"arguments"`
 }
@@ -74,6 +75,18 @@ var migrations = []string{
 	`ALTER TABLE projects ADD COLUMN notified_at INTEGER`, // last OS notification; one per stale period
 	`ALTER TABLE projects ADD COLUMN brain_note TEXT`,     // file name in the brain, kept across renames
 	`CREATE UNIQUE INDEX brain_notes ON projects (workspace_id, lower(brain_note))`,
+	`CREATE TABLE folders (
+		id INTEGER PRIMARY KEY,
+		workspace_id TEXT NOT NULL DEFAULT 'default',
+		project_id INTEGER NOT NULL,
+		path TEXT NOT NULL,
+		main INTEGER NOT NULL DEFAULT 0,
+		added_at INTEGER NOT NULL
+	)`,
+	`CREATE INDEX folders_by_project ON folders (project_id)`,
+	`CREATE UNIQUE INDEX folders_one_main ON folders (project_id) WHERE main = 1`,
+	`INSERT INTO folders (workspace_id, project_id, path, main, added_at)
+		SELECT workspace_id, id, path, 1, created_at FROM projects WHERE path != ''`, // each project's folder becomes its main folder
 }
 
 // Open opens (creating if needed) the store in dir. now is the clock every
@@ -94,6 +107,10 @@ func Open(dir string, now func() time.Time) (*Store, error) {
 		return nil, err
 	}
 	if err := s.importJSON(); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := s.syncFolders(); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -218,18 +235,38 @@ type execer interface {
 }
 
 func insertProject(db execer, p Project, now time.Time) error {
-	_, err := db.Exec(`INSERT INTO projects (workspace_id, name, path, programs, arguments, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+	res, err := db.Exec(`INSERT INTO projects (workspace_id, name, path, programs, arguments, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
 		DefaultWorkspace, p.Name, p.Path, encode(p.Programs), encode(p.Arguments), now.Unix())
-	return err
+	if err != nil {
+		return err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return err
+	}
+	return replaceMainFolder(db, id, p.Path, now)
 }
 
 var ErrNotFound = errors.New("project not found")
 
-// UpdateProject replaces name, path, programs and arguments of the project with p.ID.
+// UpdateProject replaces name, main folder, programs and arguments of the
+// project with p.ID.
 func (s *Store) UpdateProject(p Project) error {
-	res, err := s.db.Exec(`UPDATE projects SET name = ?, path = ?, programs = ?, arguments = ? WHERE id = ? AND workspace_id = ?`,
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// projects.path is kept in step for an older proz (a tray from an earlier install) on the same file
+	res, err := tx.Exec(`UPDATE projects SET name = ?, path = ?, programs = ?, arguments = ? WHERE id = ? AND workspace_id = ?`,
 		p.Name, p.Path, encode(p.Programs), encode(p.Arguments), p.ID, DefaultWorkspace)
-	return foundOrErr(res, err)
+	if err := foundOrErr(res, err); err != nil {
+		return err
+	}
+	if err := replaceMainFolder(tx, p.ID, p.Path, s.now()); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) RemoveProject(id int64) error {
@@ -243,6 +280,9 @@ func (s *Store) RemoveProject(id int64) error {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM milestones WHERE project_id = ? AND workspace_id = ?`, id, DefaultWorkspace); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM folders WHERE project_id = ? AND workspace_id = ?`, id, DefaultWorkspace); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -271,7 +311,11 @@ func encode(v []string) string {
 
 // Projects returns every project in the order they were added.
 func (s *Store) Projects() ([]Project, error) {
-	rows, err := s.db.Query(`SELECT id, name, path, programs, arguments FROM projects WHERE workspace_id = ? ORDER BY id`, DefaultWorkspace)
+	folders, err := s.folders()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(`SELECT p.id, p.name, `+mainPath+`, p.programs, p.arguments FROM projects p WHERE p.workspace_id = ? ORDER BY p.id`, DefaultWorkspace)
 	if err != nil {
 		return nil, err
 	}
@@ -289,6 +333,7 @@ func (s *Store) Projects() ([]Project, error) {
 		if err := json.Unmarshal([]byte(args), &p.Arguments); err != nil {
 			return nil, fmt.Errorf("project %d arguments: %w", p.ID, err)
 		}
+		p.Folders = append([]Folder{}, folders[p.ID]...)
 		out = append(out, p)
 	}
 	return out, rows.Err()
@@ -339,21 +384,26 @@ func (s *Store) recordLaunch(p Project) error {
 }
 
 // Launch records a launch of p (activity, even with no program) and program
-// as recently used, and returns the command that opens
-// p with it; the caller wires stdio and runs it. No program means nothing to
-// launch, so it returns a nil command. When the caller has no terminal
-// attached, a terminal program is wrapped in the user's terminal emulator.
-func (s *Store) Launch(p Project, program string, attached bool) (*exec.Cmd, error) {
+// as recently used, and returns the command that opens p with it in folder:
+// one of p's folders or worktrees, or its main folder when folder is empty.
+// The caller wires stdio and runs it. No program means nothing to launch, so
+// it returns a nil command. When the caller has no terminal attached, a
+// terminal program is wrapped in the user's terminal emulator.
+func (s *Store) Launch(p Project, folder, program string, attached bool) (*exec.Cmd, error) {
+	dir, err := s.openIn(p, folder)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.recordLaunch(p); err != nil {
 		return nil, err
 	}
-	if program == "" || p.Path == "" { // an idea has no folder to open yet
+	if program == "" || dir == "" { // an idea has no folder to open yet
 		return nil, nil
 	}
 	if err := s.PushRecentProgram(program); err != nil {
 		return nil, err
 	}
-	args := append([]string{program}, append(slices.Clone(p.Arguments), p.Path)...)
+	args := append([]string{program}, append(slices.Clone(p.Arguments), dir)...)
 	newConsole := false
 	if !attached {
 		need, err := s.NeedsTerminal(program)
@@ -361,13 +411,13 @@ func (s *Store) Launch(p Project, program string, attached bool) (*exec.Cmd, err
 			return nil, err
 		}
 		if need.On {
-			if args, newConsole, err = s.runInTerminal(p.Path, args); err != nil {
+			if args, newConsole, err = s.runInTerminal(dir, args); err != nil {
 				return nil, fmt.Errorf("no terminal found to open %s in; %w", program, err)
 			}
 		}
 	}
 	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Dir = p.Path
+	cmd.Dir = dir
 	if newConsole {
 		setNewConsole(cmd)
 	}

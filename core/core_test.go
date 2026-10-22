@@ -38,7 +38,7 @@ func names(t *testing.T, s *Store) []string {
 func TestProjectSurvivesReopen(t *testing.T) {
 	dir := t.TempDir()
 	s := open(t, dir)
-	want := Project{Name: "rt", Path: "/tmp", Programs: []string{"echo"}, Arguments: []string{"hello"}}
+	want := Project{Name: "rt", Path: dir, Programs: []string{"echo"}, Arguments: []string{"hello"}}
 	if err := s.AddProject(want); err != nil {
 		t.Fatal(err)
 	}
@@ -53,6 +53,7 @@ func TestProjectSurvivesReopen(t *testing.T) {
 	}
 	got := ps[0]
 	got.ID = 0
+	want.Folders = []Folder{{Path: dir, Main: true}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
@@ -212,18 +213,18 @@ func TestLaunchRecordsProgramAndBuildsCommand(t *testing.T) {
 	ps, _ := s.Projects()
 	p := ps[0]
 
-	if cmd, err := s.Launch(p, "", true); err != nil || cmd != nil {
+	if cmd, err := s.Launch(p, "", "", true); err != nil || cmd != nil {
 		t.Fatalf("no program: want nil command, got %v, %v", cmd, err)
 	}
 	if got := recent(t, s); len(got) != 0 {
 		t.Fatalf("no program must not be recorded, got %v", got)
 	}
 
-	cmd, err := s.Launch(p, "code", true)
+	cmd, err := s.Launch(p, "", "code", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Launch(Project{ID: 42}, "", true); err == nil {
+	if _, err := s.Launch(Project{ID: 42}, "", "", true); err == nil {
 		t.Fatal("launching an unknown project should fail")
 	}
 	if want := []string{"code", "--new-window", "/web"}; !reflect.DeepEqual(cmd.Args, want) || cmd.Dir != "/web" {

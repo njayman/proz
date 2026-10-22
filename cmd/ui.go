@@ -531,16 +531,18 @@ func runBinaryPicker(binaries []string) ([]string, error) {
 	return model.selected, nil
 }
 
-type programSelectModel struct {
-	programs  []string
+// selectModel picks one of items, starting at the first.
+type selectModel struct {
+	title     string
+	items     []string
 	cursor    int
-	selected  string
 	cancelled bool
+	done      bool
 }
 
-func (m programSelectModel) Init() tea.Cmd { return nil }
+func (m selectModel) Init() tea.Cmd { return nil }
 
-func (m programSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m selectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -548,10 +550,10 @@ func (m programSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cancelled = true
 			return m, tea.Quit
 		case "enter":
-			m.selected = m.programs[m.cursor]
+			m.done = true
 			return m, tea.Quit
 		case "down", "j":
-			if m.cursor < len(m.programs)-1 {
+			if m.cursor < len(m.items)-1 {
 				m.cursor++
 			}
 		case "up", "k":
@@ -563,31 +565,38 @@ func (m programSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m programSelectModel) View() string {
+func (m selectModel) View() string {
 	var b strings.Builder
-	b.WriteString("Choose a program to launch with\n\n")
-	for i, p := range m.programs {
+	b.WriteString(m.title + "\n\n")
+	for i, item := range m.items {
 		prefix := "  "
 		if i == m.cursor {
 			prefix = "▸ "
 		}
-		b.WriteString(fmt.Sprintf("%s%s\n", prefix, p))
+		b.WriteString(fmt.Sprintf("%s%s\n", prefix, item))
 	}
 	b.WriteString("\n↑↓/jk navigate · enter select · q/esc cancel")
 	return b.String()
 }
 
-func runProgramSelectPicker(programs []string) (string, error) {
-	m := programSelectModel{programs: programs}
-	final, err := runTUI(m)
+// runSelectPicker returns the index of the item picked, or -1 if cancelled.
+func runSelectPicker(title string, items []string) (int, error) {
+	final, err := runTUI(selectModel{title: title, items: items})
 	if err != nil {
+		return -1, err
+	}
+	if model := final.(selectModel); model.done {
+		return model.cursor, nil
+	}
+	return -1, nil
+}
+
+func runProgramSelectPicker(programs []string) (string, error) {
+	i, err := runSelectPicker("Choose a program to launch with", programs)
+	if err != nil || i < 0 {
 		return "", err
 	}
-	model := final.(programSelectModel)
-	if model.cancelled {
-		return "", nil
-	}
-	return model.selected, nil
+	return programs[i], nil
 }
 
 type editFormModel struct {

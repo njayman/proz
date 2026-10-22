@@ -168,23 +168,26 @@ func runForm(t, dir string, exact bool) []string {
 }
 
 // LaunchTerminal records a launch of p and returns the command that opens a
-// terminal in its folder: the user's shell when the caller has a terminal,
-// else a new window of the user's terminal emulator. An idea with no folder
-// returns a nil command.
-func (s *Store) LaunchTerminal(p Project, attached bool) (*exec.Cmd, error) {
-	if err := s.recordLaunch(p); err != nil || p.Path == "" {
+// terminal in folder, as Launch takes it: the user's shell when the caller
+// has a terminal, else a new window of the user's terminal emulator. An idea
+// with no folder returns a nil command.
+func (s *Store) LaunchTerminal(p Project, folder string, attached bool) (*exec.Cmd, error) {
+	dir, err := s.openIn(p, folder)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.recordLaunch(p); err != nil || dir == "" {
 		return nil, err
 	}
 	args := []string{cmp.Or(os.Getenv("SHELL"), os.Getenv("ComSpec"), "/bin/sh")}
 	newConsole := false
 	if !attached {
-		var err error
-		if args, newConsole, err = s.runInTerminal(p.Path, nil); err != nil {
+		if args, newConsole, err = s.runInTerminal(dir, nil); err != nil {
 			return nil, fmt.Errorf("no terminal found to open %s in; %w", p.Name, err)
 		}
 	}
 	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Dir = p.Path
+	cmd.Dir = dir
 	if newConsole {
 		setNewConsole(cmd)
 	}

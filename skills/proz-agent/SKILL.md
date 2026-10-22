@@ -17,7 +17,7 @@ If your client has the proz MCP tools (`list_projects`, `get_project`, `record_m
 proz list --json
 ```
 
-Prints every project as JSON: `name`, `path`, `programs` (array, may be empty), `arguments`.
+Prints every project as JSON: `name`, `path` (the main folder), `folders`, `programs` (array, may be empty), `arguments`. `folders` lists every folder behind the project as `{path, main, missing}`: exactly one is `main` whenever there are any, and `missing` is true when the folder is gone or a parent was replaced by a file (it is never removed for that). Every project shape in `--json` and MCP carries `folders`.
 
 Narrow results instead of piping through `grep`/`jq` for simple cases:
 
@@ -35,7 +35,7 @@ Flags compose, e.g. `proz list --json --filter api --sort name --limit 5`.
 proz nudges --json
 ```
 
-Prints projects that have gone quiet (stale): `name`, `path`, `last_activity` (RFC 3339, UTC), `quiet_days` (whole days, rounded down), `quiet_seconds`, `note` (the left-off note, one line per signal) and `short_note` (one line, truncated). `[]` means nothing is stale. Activity is the newest of: registration, the last launch through proz, the latest milestone, the last commit on a local branch that touches the project folder, the newest uncommitted file (outside git, the newest file; dependency and build folders never count), and the latest Claude Code session whose working directory is in the project. A project is stale after 7 quiet days by default; `proz config stale-days` prints the threshold and `proz config stale-days <n>` changes it. `--project <name>` reads or sets one project's override (`0` removes it). Only change thresholds when the user asks.
+Prints projects that have gone quiet (stale): `name`, `path`, `folders`, `last_activity` (RFC 3339, UTC), `quiet_days` (whole days, rounded down), `quiet_seconds`, `note` (the left-off note, one line per signal) and `short_note` (one line, truncated). `[]` means nothing is stale. Activity is the newest of: registration, the last launch through proz, the latest milestone, and, across every one of the project's folders that is present: the last commit on a local branch that touches the folder, the newest uncommitted file (outside git, the newest file; dependency and build folders never count), and the latest Claude Code session whose working directory is in the folder. A project is stale after 7 quiet days by default; `proz config stale-days` prints the threshold and `proz config stale-days <n>` changes it. `--project <name>` reads or sets one project's override (`0` removes it). Only change thresholds when the user asks.
 
 Use this when the user asks what they were working on, what they forgot, or what to pick up next. Report the list; don't act on it.
 
@@ -46,7 +46,7 @@ proz status --json            # the project containing the current directory (su
 proz status <name> --json
 ```
 
-Same fields as one `nudges` entry, plus `stale` (bool, quiet past the threshold), `state` (`active`, `stale`, `snoozed` or `archived`; only `stale` nudges), `snoozed_until` (RFC 3339, only while snoozed) and `milestones` (`text`, `at`; newest first, `[]` if none). The note is composed automatically, in fixed order: how long it has been quiet, the latest milestone, the last commit message, the branch, the uncommitted file count, `Git too slow to read changes` if git took longer than 3 seconds there (commit and uncommitted lines may then be missing; file times still count), the user's last Claude Code prompt in the project (unless `proz config prompts off`), and `Folder missing: <path>` if the folder was moved or deleted (tell the user; the project stays tracked). Use it when resuming work on a project, before asking the user what they were doing. Without `--json` it prints the note as plain lines.
+Same fields as one `nudges` entry, plus `stale` (bool, quiet past the threshold), `state` (`active`, `stale`, `snoozed` or `archived`; only `stale` nudges), `snoozed_until` (RFC 3339, only while snoozed) and `milestones` (`text`, `at`; newest first, `[]` if none). The note is composed automatically, in fixed order: how long it has been quiet, the latest milestone, the last commit message and the branch (from the project's most recently active folder with git), the uncommitted file count (summed across its folders), `Git too slow to read changes` if git took longer than 3 seconds there (commit and uncommitted lines may then be missing; file times still count), the user's last Claude Code prompt in the project (unless `proz config prompts off`), and one `Folder missing: <path>` line for each folder that was moved or deleted (tell the user; proz never removes it, and the project stays tracked). Use it when resuming work on a project, before asking the user what they were doing. Without `--json` it prints the note as plain lines.
 
 ## Respond to a nudge
 
@@ -55,6 +55,7 @@ Every nudge asks the user one decision. Run these only when the user has made it
 ```bash
 proz resume [project]          # prints the left-off note, then opens the project's program
 proz resume [project] --terminal  # prints the note, then opens a terminal in the project's folder (in a terminal: starts the user's shell there and waits)
+proz resume [project] --folder <path>  # opens in that exact folder or worktree of the project (also with --terminal); any other path fails
 proz snooze [project] [days]   # hide the nudge for N days (7 by default); it returns if still quiet
 proz snooze [project] --until YYYY-MM-DD   # hide it until the start of that local day, for a date the user names
 proz drop [project]            # archive: no more nudges until any new activity revives it
@@ -62,7 +63,7 @@ proz archived --json           # dropped projects, same fields as nudges
 proz restore [project]         # un-archive and clear any snooze
 ```
 
-With no project name these use the project containing the current directory. For `snooze` with two arguments, they are the project then the days; with one, an exact project name wins, otherwise a number is the days. A snooze ends early if the project sees new activity: the next quiet stretch nudges as usual. `resume` runs the project's program in the current terminal. Without a terminal (your shell, rofi, the tray), terminal programs such as `nvim`, `lazygit` or `claude` open in a new window of the user's terminal emulator in the project's folder, and GUI programs start on their own. On Windows they start in a new console, which Windows opens in the user's default terminal. If proz cannot find a terminal (on Windows: the terminal setting names one that is not installed) it fails with an error naming `proz config terminal`. `proz config terminal [--json]` shows the terminal setting (`{"terminal": ""}`, empty means detect); `proz config terminal <command>` sets it, one word (`wezterm`) for that terminal's own form or several (`wezterm start --`) used as written, and `proz config terminal ""` goes back to detecting. Set it only when the user asks or a launch fails with that error and the user tells you their terminal. proz guesses which programs need a terminal from a list of well-known terminal programs and agent CLIs, their `.desktop` entry (`Terminal=true`) on Linux, and whether the executable is a console program on Windows (`.cmd` and `.bat` shims count as GUI). `proz config needs-terminal <program> [--json]` shows the decision (`{"program": "btop", "needs_terminal": true, "set": false}`, `set` true when it is the user's setting); `proz config needs-terminal <program> on|off` overrides it and `auto` goes back to the guess. Change it when the user says a program opened wrongly (a terminal program with no window, or a GUI program inside a terminal).
+With no project name these use the project containing the current directory. For `snooze` with two arguments, they are the project then the days; with one, an exact project name wins, otherwise a number is the days. A snooze ends early if the project sees new activity: the next quiet stretch nudges as usual. `resume` runs the project's program in the current terminal, in the main folder unless `--folder` names another of the project's folders or worktrees (a person at a terminal is asked which when there are several; you have no terminal, so pass `--folder` when the user names one). Without a terminal (your shell, rofi, the tray), terminal programs such as `nvim`, `lazygit` or `claude` open in a new window of the user's terminal emulator in the project's folder, and GUI programs start on their own. On Windows they start in a new console, which Windows opens in the user's default terminal. If proz cannot find a terminal (on Windows: the terminal setting names one that is not installed) it fails with an error naming `proz config terminal`. `proz config terminal [--json]` shows the terminal setting (`{"terminal": ""}`, empty means detect); `proz config terminal <command>` sets it, one word (`wezterm`) for that terminal's own form or several (`wezterm start --`) used as written, and `proz config terminal ""` goes back to detecting. Set it only when the user asks or a launch fails with that error and the user tells you their terminal. proz guesses which programs need a terminal from a list of well-known terminal programs and agent CLIs, their `.desktop` entry (`Terminal=true`) on Linux, and whether the executable is a console program on Windows (`.cmd` and `.bat` shims count as GUI). `proz config needs-terminal <program> [--json]` shows the decision (`{"program": "btop", "needs_terminal": true, "set": false}`, `set` true when it is the user's setting); `proz config needs-terminal <program> on|off` overrides it and `auto` goes back to the guess. Change it when the user says a program opened wrongly (a terminal program with no window, or a GUI program inside a terminal).
 
 ## Record a milestone
 
@@ -87,9 +88,19 @@ Skip it for trivial edits, and don't record one per message. If the directory is
 proz idea "habit tracker that texts me"
 ```
 
-Saves the idea as a project with no folder, so it resurfaces like any project when it goes quiet (registration, launches and milestones count as activity). Capture one when the user floats an idea they are not acting on now ("someday I want to...", "remind me to build..."); record milestones on it by name as it develops. Ideas show `"path": ""` in JSON.
+Saves the idea as a project with no folder, so it resurfaces like any project when it goes quiet (registration, launches and milestones count as activity). Capture one when the user floats an idea they are not acting on now ("someday I want to...", "remind me to build..."); record milestones on it by name as it develops. Ideas show `"path": ""` and `"folders": []` in JSON.
 
 When the user later registers a folder named like the idea (`habit-tracker-that-texts-me`), `proz add` attaches the folder to the idea instead of creating a second project. Without a terminal it attaches by default.
+
+## Folders
+
+```bash
+proz folder add [folder] [--project <name>] [--json]   # the current folder by default
+proz folder rm <folder> [--project <name>] [--json]
+proz folder main <folder> [--project <name>] [--json]
+```
+
+A project can have several folders (a backend and a frontend, drafts and research). `add` targets `--project`, or else the project containing the current folder (so adding the current folder itself needs `--project`); `rm` and `main` target `--project`, or else the project that has that folder. Folders may be relative. The first folder is the main folder (`path`); removing the main folder makes the next oldest the main one. Adding a folder to an idea makes it a project, and removing the last folder makes it an idea again; milestones and snoozes are kept. A folder belongs to one project: adding one another project has fails with an error naming that project. Folders may sit inside another project's folder; commands run in a folder use the project with the deepest folder containing it. `--json` prints the project as `list --json` does. `rm` never touches the folder on disk. Git worktrees of a project's folders are found automatically and count for that project (activity, the note's commit and branch, and commands run inside them); they never appear in `folders`, and adding one as a folder fails naming the project. Add or remove folders when the user asks, or when they tell you a project now lives in another place as well.
 
 ## Read the brain note
 
@@ -110,7 +121,7 @@ proz <path>                # name = basename(path)
 proz add <name>             # registers $PWD under <name>
 ```
 
-Both run non-interactively when there's no TTY (this shell): they save the project with no program/arguments and print a warning to stderr, rather than hanging on a picker. That's expected, not an error. If the user wants a program attached, tell them to run `proz add <name>` themselves in a terminal, or run `proz edit <name>` afterward.
+Both run non-interactively when there's no TTY (this shell): they save the project with no program/arguments and print a warning to stderr, rather than hanging on a picker. That's expected, not an error. If the folder is already a folder of another project, or a git worktree of one, it asks whether to track it as a separate project, prints `Not added.` and adds nothing unless the answer is yes; you have no terminal to answer it, so tell the user, and let them run it themselves if they do want a second project. If the user wants a program attached, tell them to run `proz add <name>` themselves in a terminal, or run `proz edit <name>` afterward.
 
 ## Edit / delete
 

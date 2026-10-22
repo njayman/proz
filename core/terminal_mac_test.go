@@ -72,7 +72,7 @@ func TestMacFallsBackToTerminalApp(t *testing.T) {
 	if got := launchArgs(t, s, p, "nvim", false); !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
-	cmd, err := s.LaunchTerminal(p, false)
+	cmd, err := s.LaunchTerminal(p, "", false)
 	if err != nil || !reflect.DeepEqual(cmd.Args, []string{"osascript", "-e", terminalAppScript, "cd '" + p.Path + "'"}) {
 		t.Fatalf("terminal only: got %v, %v", cmd.Args, err)
 	}
