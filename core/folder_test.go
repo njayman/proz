@@ -50,7 +50,7 @@ func TestUpgradingMakesEachProjectsFolderItsMainFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	// wind the store back to before folders had a table of their own
-	if _, err := s.db.Exec(`DROP TABLE folders`); err != nil {
+	if _, err := s.db.Exec(`DROP TABLE folders; DROP TABLE links; DROP TABLE hosts`); err != nil {
 		t.Fatal(err)
 	}
 	before := slices.IndexFunc(migrations, func(m string) bool { return strings.HasPrefix(m, "CREATE TABLE folders") })

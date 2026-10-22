@@ -29,6 +29,12 @@ type (
 		Target
 		Text string `json:"text" jsonschema:"what is done and what comes next, in one sentence, e.g. 'shipped login; next: signup'"`
 	}
+	linkInput struct { // provider's choices are core.Providers; a tag must be a constant
+		Target
+		Ref      string `json:"ref" jsonschema:"the web address of the project's tracker or notes (such as its GitHub repository, Linear project or Notion page), owner/repo for GitHub, or an absolute path to a local notes file or folder"`
+		Provider string `json:"provider,omitempty" jsonschema:"only when proz does not recognize the address: github, linear, jira, trello, asana, todoist, notion, brainmd or other"`
+		Kind     string `json:"kind,omitempty" jsonschema:"tracker (where its tasks live) or brain (where its notes live); defaults to the tool's usual kind"`
+	}
 	named struct {
 		Name string `json:"name"`
 	}
@@ -85,12 +91,7 @@ func New(open func() (*core.Store, error), version string) *mcp.Server {
 			if err != nil {
 				return err
 			}
-			status, err := st.Status(p.ID)
-			if err != nil {
-				return err
-			}
-			ms, err := st.Milestones(p.ID)
-			out = contract.NewStatus(status, ms)
+			out, err = status(st, p.ID)
 			return err
 		})
 		return nil, out, err
@@ -134,6 +135,27 @@ func New(open func() (*core.Store, error), version string) *mcp.Server {
 		})
 		return nil, out, err
 	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "add_link",
+		Description: "Link a project to the tracker or brain where its tasks or notes live, like 'proz link', when you see the user working in a tool the project has no link for. " +
+			"proz never reads through a link; you read the tool with your own MCP server for it. An address proz does not recognize fails naming the providers and kinds: retry with provider and kind. Returns the project as get_project does.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, in linkInput) (*mcp.CallToolResult, contract.Status, error) {
+		var out contract.Status
+		err := with(func(st *core.Store) error {
+			p, err := resolve(st, in.Target)
+			if err != nil {
+				return err
+			}
+			if _, err := st.AddLink(p.ID, in.Ref, in.Provider, in.Kind); err != nil {
+				return err
+			}
+			out, err = status(st, p.ID)
+			return err
+		})
+		return nil, out, err
+	})
+
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "read_brain_note",
 		Description: "Read a project's note from the user's brain (a local markdown folder): proz's section with the left-off note and milestones, " +
@@ -151,6 +173,16 @@ func New(open func() (*core.Store, error), version string) *mcp.Server {
 		return nil, out, err
 	})
 	return s
+}
+
+// status is project id in full, as get_project returns it.
+func status(st *core.Store, id int64) (contract.Status, error) {
+	s, err := st.Status(id)
+	if err != nil {
+		return contract.Status{}, err
+	}
+	ms, err := st.Milestones(id)
+	return contract.NewStatus(s, ms), err
 }
 
 func resolve(st *core.Store, t Target) (core.Project, error) {

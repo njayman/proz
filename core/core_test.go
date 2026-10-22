@@ -54,6 +54,7 @@ func TestProjectSurvivesReopen(t *testing.T) {
 	got := ps[0]
 	got.ID = 0
 	want.Folders = []Folder{{Path: dir, Main: true}}
+	want.Links = []Link{}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}

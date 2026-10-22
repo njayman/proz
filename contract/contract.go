@@ -14,6 +14,7 @@ type Nudge struct {
 	Name         string        `json:"name"`
 	Path         string        `json:"path"`
 	Folders      []core.Folder `json:"folders"`
+	Links        []core.Link   `json:"links"`
 	LastActivity string        `json:"last_activity"`
 	QuietDays    int           `json:"quiet_days"`
 	QuietSeconds int64         `json:"quiet_seconds"`
@@ -26,6 +27,7 @@ func NewNudge(s core.Status) Nudge {
 		Name:         s.Name,
 		Path:         s.Path,
 		Folders:      append([]core.Folder{}, s.Folders...),
+		Links:        append([]core.Link{}, s.Links...),
 		LastActivity: s.LastActivity.UTC().Format(time.RFC3339),
 		QuietDays:    int(s.Quiet / (24 * time.Hour)),
 		QuietSeconds: int64(s.Quiet / time.Second),
