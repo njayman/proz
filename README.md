@@ -71,6 +71,8 @@ Opens the program picker: desktop applications by default, Tab for all PATH bina
 
 If the folder is already a folder of another project, or a git worktree of one, it first asks whether to track it as a separate project; anything but yes adds nothing.
 
+When the folder's git `origin` is on GitHub, it then offers to link the repository's issues as the project's tracker (see `proz link`): Enter or `y` links it, anything else does not.
+
 ### `proz delete <name>`
 
 Deletes a project. Without a name, opens the picker to select one.
@@ -99,6 +101,10 @@ Captures an idea as a project with no folder yet, so it resurfaces too. Register
 
 Records a progress checkpoint, usually written by an agent at the end of a session ("shipped login; next: signup"). The latest milestone leads the left-off note and counts as activity. `proz status` lists them all.
 
+### `proz link <url-or-path> [project]` and `proz unlink <url-or-path> [project]`
+
+Links a project to the tracker or brain it already uses, so agents know where its tasks and notes live: paste its GitHub repository, Linear project, Jira board, Trello board, Asana or Todoist project, or Notion page. proz recognizes the tool from the address; Notion counts as notes unless you add `--kind tracker`. For any other address, such as a self-hosted Jira or GitLab or a brain.md instance, proz asks you to say what it is once with `--provider` (one of the above, `brainmd`, or `other`) and `--kind tracker|brain`, and remembers it for that host. `owner/repo` and `owner/repo#123` are taken as GitHub, and an issue key such as `ENG-123` works once one Linear workspace or Jira site is linked. A file or folder of notes, such as a note or folder in an Obsidian vault or a Logseq graph, links as the project's notes with no server running, and editing it counts as activity (a whole vault or graph, or the brain folder, does not). A linked folder on an unplugged drive stays linked and the left-off note says it is missing. A project can have several links and one link can sit on several projects. proz never reads through a link and stores no passwords or tokens; your agent reads the tool with its own MCP server. With no project name, uses the project containing the current folder. `--json` prints the project as `list --json` does.
+
 ### `proz resume | snooze | drop | restore [project]`
 
 The answers to a nudge. `resume` prints the left-off note and opens the project's program. `snooze [project] [days]` hides the nudge for N days (7 by default), and `snooze [project] --until 2026-11-09` hides it until the start of that day; either way it comes back if the project is still quiet. `drop` archives the project until any new activity revives it, and `restore` brings it back by hand. `proz archived [--json]` lists dropped projects.
@@ -126,7 +132,7 @@ Log in again to start it (Sway runs `exec` at login, not on reload). The service
 
 ### `proz mcp`
 
-Serves proz to an agent over MCP on stdio, as a child process with no network listener. Tools: `list_projects`, `get_project`, `record_milestone`, `capture_idea`, `list_nudges` and `read_brain_note`, returning the same fields as the `--json` commands. The proz Claude Code plugin registers it; for other clients, configure the command `proz mcp`.
+Serves proz to an agent over MCP on stdio, as a child process with no network listener. Tools: `list_projects`, `get_project`, `record_milestone`, `capture_idea`, `list_nudges`, `read_brain_note` and `add_link`, returning the same fields as the `--json` commands. The proz Claude Code plugin registers it; for other clients, configure the command `proz mcp`.
 
 ### `proz check [--json]`
 
