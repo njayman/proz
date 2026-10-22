@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -73,6 +74,13 @@ func TestListJSONContract(t *testing.T) {
   {
     "name": "web",
     "path": "/web",
+    "folders": [
+      {
+        "path": "/web",
+        "main": true,
+        "missing": true
+      }
+    ],
     "programs": [
       "code",
       "claude"
@@ -84,11 +92,25 @@ func TestListJSONContract(t *testing.T) {
   {
     "name": "notes",
     "path": "/notes",
+    "folders": [
+      {
+        "path": "/notes",
+        "main": true,
+        "missing": true
+      }
+    ],
     "arguments": []
   },
   {
     "name": "legacy",
     "path": "/old",
+    "folders": [
+      {
+        "path": "/old",
+        "main": true,
+        "missing": true
+      }
+    ],
     "programs": [
       "nvim"
     ],
@@ -119,6 +141,13 @@ func TestNudgesJSONContract(t *testing.T) {
   {
     "name": "web",
     "path": "/web",
+    "folders": [
+      {
+        "path": "/web",
+        "main": true,
+        "missing": true
+      }
+    ],
     "last_activity": "2026-10-01T09:00:00Z",
     "quiet_days": 10,
     "quiet_seconds": 867600,
@@ -194,6 +223,13 @@ func TestStatusResolvesProjectFromWorkingDirectory(t *testing.T) {
 	want := `{
   "name": "web",
   "path": ` + jsonString(project) + `,
+  "folders": [
+    {
+      "path": ` + jsonString(project) + `,
+      "main": true,
+      "missing": false
+    }
+  ],
   "last_activity": "2026-10-01T09:00:00Z",
   "quiet_days": 3,
   "quiet_seconds": 259200,
@@ -235,6 +271,13 @@ func TestMilestoneByNameAndFromWorkingDirectory(t *testing.T) {
 	want := `{
   "name": "web",
   "path": ` + jsonString(project) + `,
+  "folders": [
+    {
+      "path": ` + jsonString(project) + `,
+      "main": true,
+      "missing": false
+    }
+  ],
   "last_activity": "2026-10-02T09:00:00Z",
   "quiet_days": 2,
   "quiet_seconds": 172800,
@@ -277,6 +320,7 @@ func TestIdeaCaptureResurfaces(t *testing.T) {
   {
     "name": "habit tracker app",
     "path": "",
+    "folders": [],
     "last_activity": "2026-10-01T09:00:00Z",
     "quiet_days": 8,
     "quiet_seconds": 691200,
@@ -326,6 +370,46 @@ func TestAddOffersToAttachAFolderToAMatchingIdea(t *testing.T) {
 	}
 	if out := run(t, "status", "Habit Tracker"); !strings.Contains(out, "sketched data model") {
 		t.Fatalf("attached idea must keep its milestones: %q", out)
+	}
+}
+
+func TestAddAsksBeforeTrackingAnotherProjectsFolderOrWorktree(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("needs git")
+	}
+	configDir(t)
+	t.Cleanup(func() { stdin = bufio.NewReader(os.Stdin) })
+	web := filepath.Join(t.TempDir(), "web")
+	os.MkdirAll(web, 0775)
+	for _, args := range [][]string{{"init", "-q"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "start"}} {
+		if out, err := exec.Command("git", append([]string{"-C", web}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %s", args, out)
+		}
+	}
+	wt := filepath.Join(filepath.Dir(web), "web-fix")
+	if out, err := exec.Command("git", "-C", web, "worktree", "add", "-q", wt).CombinedOutput(); err != nil {
+		t.Fatalf("worktree: %s", out)
+	}
+	stdin = bufio.NewReader(strings.NewReader("\n"))
+	run(t, web)
+	count := func() int {
+		var out []struct{ Name string }
+		json.Unmarshal([]byte(run(t, "list", "--json")), &out)
+		return len(out)
+	}
+
+	for _, dir := range []string{web, wt} {
+		for _, answer := range []string{"", "n\n"} { // no answer (an agent) or no: nothing added
+			stdin = bufio.NewReader(strings.NewReader(answer))
+			if out := run(t, dir); !strings.Contains(out, "web") || !strings.Contains(out, "Not added") || count() != 1 {
+				t.Fatalf("%s, answer %q: %q, %d projects", dir, answer, out, count())
+			}
+		}
+	}
+	stdin = bufio.NewReader(strings.NewReader("y\n\n"))
+	run(t, wt)
+	if count() != 2 {
+		t.Fatalf("confirmed: want a separate project, got %d", count())
 	}
 }
 

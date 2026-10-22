@@ -4,11 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -129,7 +127,11 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Query(`SELECT p.id, p.name, p.path,
+	folders, err := s.folders()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(`SELECT p.id, p.name, `+mainPath+`,
 			max(p.created_at, coalesce(p.last_launch, 0), coalesce(m.created_at, 0)), p.stale_seconds, m.text,
 			p.snoozed_until, p.snoozed_at, p.dropped_at, p.notified_at
 		FROM projects p
@@ -155,6 +157,7 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 			rows.Close()
 			return nil, err
 		}
+		r.st.Folders = folders[r.st.ID]
 		found = append(found, r)
 	}
 	rows.Close() // release the single connection before running git
@@ -163,22 +166,21 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 	}
 
 	now := s.now()
-	ignore := []string{resolve(s.dir)} // proz's own writes are not the user's activity
-	if brain, err := s.BrainPath(); err != nil {
+	ignore, err := s.ignored()
+	if err != nil {
 		return nil, err
-	} else if brain != "" {
-		ignore = append(ignore, resolve(brain))
 	}
 	prompts, err := s.ModuleOn(ModulePrompts)
 	if err != nil {
 		return nil, err
 	}
-	// Read each project's signals in parallel, each under one git deadline,
-	// so a slow repository costs at most the limit and slow ones do not add up.
+	// Read each project's signals in parallel, each under one git deadline
+	// for all its folders, so a slow repository costs at most the limit and
+	// slow ones do not add up.
 	type signals struct {
-		g       gitState
+		g       gitState // from the most recently active folder with git
 		hasGit  bool
-		missing bool
+		missing []string // folders that are gone; skipped, never removed
 		work    workState
 		cl      claudeState
 		hasCl   bool
@@ -195,18 +197,24 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 			defer func() { <-sem }()
 			ctx, cancel := context.WithTimeout(context.Background(), gitLimit)
 			defer cancel()
-			path, x := r.st.Path, &sig[i]
-			x.g, x.hasGit = readGit(ctx, path)
-			if path != "" {
-				_, err := os.Stat(path)
-				// gone, or a parent replaced by a file; permission denied is not missing
-				x.missing = errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
-				if !x.missing {
-					x.work = readWork(ctx, path, now, ignore)
+			x := &sig[i]
+			var gitActive time.Time // when the place x.g came from was last active
+			places, gone := placesOf(ctx, r.st.Folders)
+			x.missing = gone
+			for _, pl := range places {
+				seen := readPlace(ctx, pl, places, now, ignore)
+				if seen.hasGit && (!x.hasGit || seen.active.After(gitActive)) {
+					x.g, x.hasGit, gitActive = seen.g, true, seen.active
+				}
+				if seen.work.when.After(x.work.when) {
+					x.work.when = seen.work.when
+				}
+				x.work.uncommitted += seen.work.uncommitted
+				if seen.hasCl && (!x.hasCl || seen.cl.when.After(x.cl.when)) {
+					x.cl, x.hasCl = seen.cl, true
 				}
 			}
 			x.slow = ctx.Err() != nil
-			x.cl, x.hasCl = readClaude(path)
 		}()
 	}
 	wg.Wait()
@@ -216,7 +224,7 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 		st := r.st
 		st.LastActivity = time.Unix(r.recorded, 0)
 		x := sig[i]
-		g, hasGit, missing, work := x.g, x.hasGit, x.missing, x.work
+		g, hasGit, work := x.g, x.hasGit, x.work
 		if hasGit && g.when.After(st.LastActivity) {
 			st.LastActivity = g.when
 		}
@@ -277,8 +285,8 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 		if hasClaude && prompts && cl.prompt != "" {
 			st.Note.Lines = append(st.Note.Lines, "Last prompt: "+cl.prompt)
 		}
-		if missing {
-			st.Note.Lines = append(st.Note.Lines, "Folder missing: "+st.Path)
+		for _, f := range x.missing {
+			st.Note.Lines = append(st.Note.Lines, "Folder missing: "+f)
 		}
 		out = append(out, st)
 	}
@@ -296,7 +304,7 @@ type gitState struct {
 // are not the user's work, and in a bigger repo only commits under dir count.
 // ok is false when dir is empty, git is missing, or no such commit exists, so
 // the project falls back to its other signals; a nudge is the safe failure.
-// ponytail: two or three git processes per project per call; cache by HEAD mtime if project counts grow large.
+// ponytail: two or three git processes per place (folder or worktree) per call, plus two to find worktrees per folder; cache by HEAD mtime if project counts grow large.
 func readGit(ctx context.Context, dir string) (g gitState, ok bool) {
 	if dir == "" {
 		return g, false

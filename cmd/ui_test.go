@@ -129,13 +129,13 @@ func TestProjectPickerAddRowVerify(t *testing.T) {
 	}
 }
 
-func TestProgramSelectPickerVerify(t *testing.T) {
-	m := programSelectModel{programs: []string{"code", "nvim", "claude"}}
+func TestSelectPickerVerify(t *testing.T) {
+	m := selectModel{title: "Choose a program to launch with", items: []string{"code", "nvim", "claude"}}
 	var model tea.Model = m
 	model, _ = model.Update(key("down"))
 	model, cmd := model.Update(key("enter"))
-	psm := model.(programSelectModel)
-	if cmd == nil || psm.selected != "nvim" {
-		t.Fatalf("expected selected=nvim, got %q", psm.selected)
+	sm := model.(selectModel)
+	if cmd == nil || !sm.done || sm.items[sm.cursor] != "nvim" {
+		t.Fatalf("expected nvim picked, got %+v", sm)
 	}
 }

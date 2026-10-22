@@ -30,16 +30,15 @@ var guiCmd = &cobra.Command{
 // the program starts on its own, terminal programs in the user's terminal.
 func guiLaunch(s *core.Store) gui.Launch {
 	return func(p core.Project, folder string, way gui.Way) error {
-		p.Path = folder
 		var cmd *exec.Cmd
 		var err error
 		switch {
 		case way.Agent:
-			cmd, err = s.LaunchAgent(p, way.Program, false)
+			cmd, err = s.LaunchAgent(p, folder, way.Program, false)
 		case way.Program == "":
-			cmd, err = s.LaunchTerminal(p, false)
+			cmd, err = s.LaunchTerminal(p, folder, false)
 		default:
-			cmd, err = s.Launch(p, way.Program, false)
+			cmd, err = s.Launch(p, folder, way.Program, false)
 		}
 		if err != nil {
 			return err

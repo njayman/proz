@@ -11,19 +11,21 @@ import (
 
 // Nudge is one project in nudges, archived and check output.
 type Nudge struct {
-	Name         string `json:"name"`
-	Path         string `json:"path"`
-	LastActivity string `json:"last_activity"`
-	QuietDays    int    `json:"quiet_days"`
-	QuietSeconds int64  `json:"quiet_seconds"`
-	Note         string `json:"note"`
-	ShortNote    string `json:"short_note"`
+	Name         string        `json:"name"`
+	Path         string        `json:"path"`
+	Folders      []core.Folder `json:"folders"`
+	LastActivity string        `json:"last_activity"`
+	QuietDays    int           `json:"quiet_days"`
+	QuietSeconds int64         `json:"quiet_seconds"`
+	Note         string        `json:"note"`
+	ShortNote    string        `json:"short_note"`
 }
 
 func NewNudge(s core.Status) Nudge {
 	return Nudge{
 		Name:         s.Name,
 		Path:         s.Path,
+		Folders:      append([]core.Folder{}, s.Folders...),
 		LastActivity: s.LastActivity.UTC().Format(time.RFC3339),
 		QuietDays:    int(s.Quiet / (24 * time.Hour)),
 		QuietSeconds: int64(s.Quiet / time.Second),

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -47,32 +48,46 @@ func plural(format string, n int) string {
 	return s
 }
 
-// ProjectAt returns the project whose folder is dir or the nearest folder
-// above it, so agents and the CLI can work from anywhere inside a project.
+// ProjectAt returns the project with the deepest folder that is dir or
+// contains it, across every project's folders, so agents and the CLI can work
+// from anywhere inside a project.
 func (s *Store) ProjectAt(dir string) (Project, error) {
-	dir = resolve(dir)
 	projects, err := s.Projects()
 	if err != nil {
 		return Project{}, err
 	}
-	var best Project
-	bestLen := -1
-	for _, p := range projects {
-		if p.Path == "" {
-			continue
-		}
-		root := resolve(p.Path)
-		if len(root) <= bestLen {
-			continue
-		}
-		if within(dir, root) {
-			best, bestLen = p, len(root)
+	best, below, ok := deepestFolder(projects, dir)
+	if ok && below == 0 { // dir is a folder itself; no git needed
+		return best, nil
+	}
+	// inside a worktree, the same place in a project's own checkout counts
+	// too, and the closer match wins over a folder further out
+	ctx, cancel := context.WithTimeout(context.Background(), gitLimit)
+	defer cancel()
+	for _, wt := range otherCheckouts(ctx, dir) {
+		if p, b, found := deepestFolder(projects, wt); found && (!ok || b < below) {
+			best, below, ok = p, b, true
 		}
 	}
-	if bestLen < 0 {
+	if !ok {
 		return Project{}, ErrNotFound
 	}
 	return best, nil
+}
+
+// deepestFolder returns the project with the deepest folder that is dir or
+// contains it, and how far below that folder dir is, in bytes of path.
+func deepestFolder(projects []Project, dir string) (best Project, below int, ok bool) {
+	dir = resolve(dir)
+	bestLen := -1
+	for _, p := range projects {
+		for _, f := range p.Folders {
+			if root := resolve(f.Path); len(root) > bestLen && within(dir, root) {
+				best, bestLen = p, len(root)
+			}
+		}
+	}
+	return best, len(dir) - bestLen, bestLen >= 0
 }
 
 // within reports whether dir is root or inside it; both already resolved.

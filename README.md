@@ -69,6 +69,8 @@ Adds `path` as a project (name = basename), same flow as `proz add`, without `cd
 
 Opens the program picker: desktop applications by default, Tab for all PATH binaries. Space toggles a program for multi-select (toggled items pin to top); Enter with none toggled selects the highlighted item. Recent programs sort first. Prompts for arguments after selection.
 
+If the folder is already a folder of another project, or a git worktree of one, it first asks whether to track it as a separate project; anything but yes adds nothing.
+
 ### `proz delete <name>`
 
 Deletes a project. Without a name, opens the picker to select one.

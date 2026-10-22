@@ -94,7 +94,21 @@ var stdin = bufio.NewReader(os.Stdin)
 // register saves project, or, if its folder is named like an existing idea
 // and the user agrees, gives that idea the folder so one idea never becomes
 // two projects. With no answer (no terminal, as for agents) it attaches.
+// A folder or worktree another project has is added only once confirmed.
 func register(project Project) error {
+	// A folder or worktree another project has becomes a second project
+	// only when the user says so; with no answer nothing is added.
+	var claimed *core.ClaimedError
+	if err := withStore(func(s *core.Store) error { return s.Claim(project.Path) }); errors.As(err, &claimed) {
+		fmt.Printf("%v.\nTrack it as a separate project anyway? [y/N] ", claimed)
+		answer, _ := stdin.ReadString('\n')
+		if a := strings.ToLower(strings.TrimSpace(answer)); a != "y" && a != "yes" {
+			fmt.Println("Not added.")
+			return nil
+		}
+	} else if err != nil {
+		return err
+	}
 	var idea Project
 	if err := withStore(func(s *core.Store) (err error) {
 		idea, err = s.IdeaFor(project.Path)

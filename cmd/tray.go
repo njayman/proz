@@ -90,7 +90,7 @@ func resumeTray(id int64) error {
 		if len(p.Programs) > 0 {
 			program = p.Programs[0]
 		}
-		cmd, err = s.Launch(p, program, false)
+		cmd, err = s.Launch(p, "", program, false)
 		return err
 	}); err != nil {
 		return err

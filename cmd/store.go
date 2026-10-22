@@ -66,16 +66,21 @@ func loadRecentPrograms() (programs []string) {
 	return programs
 }
 
-// launch opens project with program. In a terminal the program runs there;
-// without one (rofi, wofi) core opens terminal programs in the user's terminal.
-func launch(project Project, program string) error {
-	return runLaunch(func(s *core.Store, attached bool) (*exec.Cmd, error) { return s.Launch(project, program, attached) })
+// launch opens project with program in folder (empty: its main folder). In a
+// terminal the program runs there; without one (rofi, wofi) core opens
+// terminal programs in the user's terminal.
+func launch(project Project, folder, program string) error {
+	return runLaunch(func(s *core.Store, attached bool) (*exec.Cmd, error) {
+		return s.Launch(project, folder, program, attached)
+	})
 }
 
-// launchTerminal opens a terminal in project's folder: the shell here when
-// in a terminal, else a new terminal window.
-func launchTerminal(project Project) error {
-	return runLaunch(func(s *core.Store, attached bool) (*exec.Cmd, error) { return s.LaunchTerminal(project, attached) })
+// launchTerminal opens a terminal in folder (empty: the project's main
+// folder): the shell here when in a terminal, else a new terminal window.
+func launchTerminal(project Project, folder string) error {
+	return runLaunch(func(s *core.Store, attached bool) (*exec.Cmd, error) {
+		return s.LaunchTerminal(project, folder, attached)
+	})
 }
 
 // runLaunch gets a launch command from core and runs it, attached to this

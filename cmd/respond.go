@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -22,8 +23,11 @@ var resumeCmd = &cobra.Command{
 		"(asking which when there are several). With no name, uses the project\n" +
 		"containing the current directory. --terminal opens a terminal in the\n" +
 		"project's folder instead: your shell here when run in a terminal, else\n" +
-		"a new terminal window. --agent claude (or codex, gemini, opencode,\n" +
-		"aider) starts that agent CLI in the project's folder, in a terminal.",
+		"a new terminal window. With several folders or worktrees it asks which,\n" +
+		"starting at the one worked in last (esc opens nothing); --folder opens\n" +
+		"an exact one, and without a terminal the main folder opens. --agent\n" +
+		"claude (or codex, gemini, opencode, aider) starts that agent CLI in the\n" +
+		"folder, in a terminal.",
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		p, err := resolveProject(args)
@@ -41,23 +45,39 @@ var resumeCmd = &cobra.Command{
 			return err
 		}
 		fmt.Println(st.Note.Full())
+		folder := resumeFolder
+		if folder != "" {
+			if folder, err = filepath.Abs(folder); err != nil {
+				return err
+			}
+		}
 		if p.Path == "" {
+			if folder != "" { // an idea has no folder to open in
+				return launch(p, folder, "")
+			}
 			fmt.Fprintf(os.Stderr, "'%s' is an idea with no folder yet. Run 'proz add' in its folder to attach one.\n", p.Name)
-			return launch(p, "") // still counts as picking it back up
+			return launch(p, "", "") // still counts as picking it back up
+		}
+		if folder == "" {
+			var ok bool
+			if folder, ok = chooseFolder(p); !ok {
+				return nil // the user backed out of the folder picker
+			}
 		}
 		if resumeTerminal {
-			return launchTerminal(p)
+			return launchTerminal(p, folder)
 		}
 		if resumeAgent != "" {
-			return runLaunch(func(s *core.Store, attached bool) (*exec.Cmd, error) { return s.LaunchAgent(p, resumeAgent, attached) })
+			return runLaunch(func(s *core.Store, attached bool) (*exec.Cmd, error) { return s.LaunchAgent(p, folder, resumeAgent, attached) })
 		}
-		return launch(p, chooseProgram(p))
+		return launch(p, folder, chooseProgram(p))
 	},
 }
 
 var (
 	resumeTerminal bool
 	resumeAgent    string
+	resumeFolder   string
 )
 
 var snoozeCmd = &cobra.Command{
@@ -191,5 +211,6 @@ func init() {
 	snoozeCmd.Flags().StringVar(&snoozeUntil, "until", "", "snooze to the start of this local date (YYYY-MM-DD)")
 	resumeCmd.Flags().BoolVar(&resumeTerminal, "terminal", false, "open a terminal in the project's folder instead of its program")
 	resumeCmd.Flags().StringVar(&resumeAgent, "agent", "", "start this agent CLI (claude, codex, ...) in the project's folder instead of its program")
+	resumeCmd.Flags().StringVar(&resumeFolder, "folder", "", "open in this folder or worktree of the project instead of asking")
 	rootCmd.AddCommand(resumeCmd, snoozeCmd, dropCmd, restoreCmd, archivedCmd)
 }
