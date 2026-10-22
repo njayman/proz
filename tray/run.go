@@ -59,10 +59,13 @@ func onReady(d Deps) {
 		for _, it := range v.Items {
 			m := systray.AddMenuItem(it.Label, "")
 			on(m.AddSubMenuItem("Resume", "Open it with its program"), done, func() { act(d, d.Resume, it.ID, show) })
-			snooze := m.AddSubMenuItem("Snooze", "Remind me later if still quiet")
+			// The lengths sit in the project's menu, not a Snooze submenu: Linux
+			// tray hosts built on libdbusmenu-gtk drop or close a third level.
+			m.AddSeparator()
 			for _, c := range SnoozeChoices {
-				on(snooze.AddSubMenuItem(c.Label, ""), done, snoozeAction(d, it.ID, c.Days, show))
+				on(m.AddSubMenuItem(c.Label, "Remind me later if still quiet"), done, snoozeAction(d, it.ID, c.Days, show))
 			}
+			m.AddSeparator()
 			on(m.AddSubMenuItem("Drop", "Archive until there is new activity"), done, func() { act(d, d.Drop, it.ID, show) })
 		}
 		if v.Loading {

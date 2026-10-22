@@ -31,15 +31,15 @@ type Item struct {
 
 const maxLabel = 60
 
-// SnoozeChoice is one length in a project's Snooze submenu.
+// SnoozeChoice is one Snooze length in a project's menu.
 type SnoozeChoice struct {
 	Label string
 	Days  int
 }
 
-// SnoozeChoices are the Snooze submenu, shortest first. ponytail: fixed;
+// SnoozeChoices are the Snooze lengths, shortest first. ponytail: fixed;
 // 'proz snooze <project> <days>' covers any other length.
-var SnoozeChoices = []SnoozeChoice{{"Tomorrow", 1}, {"3 days", 3}, {"1 week", 7}, {"2 weeks", 14}, {"1 month", 30}}
+var SnoozeChoices = []SnoozeChoice{{"Snooze until tomorrow", 1}, {"Snooze 3 days", 3}, {"Snooze 1 week", 7}, {"Snooze 2 weeks", 14}, {"Snooze 1 month", 30}}
 
 // Render turns the current nudges into what the tray shows.
 func Render(nudges []core.Status) View {
