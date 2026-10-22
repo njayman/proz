@@ -145,10 +145,10 @@ func TestLaunchOpensInTheChosenFolderOrWorktreeAndRefusesOthers(t *testing.T) {
 
 	for folder, want := range map[string]string{"": repo, docs: docs, wt: wt} {
 		cmd, err := s.Launch(app, folder, "code", true)
-		if err != nil || cmd.Dir != want || cmd.Args[len(cmd.Args)-1] != want {
+		if err != nil || resolve(cmd.Dir) != resolve(want) || resolve(cmd.Args[len(cmd.Args)-1]) != resolve(want) {
 			t.Fatalf("folder %q: got %v, %v; want %s", folder, cmd, err, want)
 		}
-		if cmd, err = s.LaunchTerminal(app, folder, true); err != nil || cmd.Dir != want {
+		if cmd, err = s.LaunchTerminal(app, folder, true); err != nil || resolve(cmd.Dir) != resolve(want) {
 			t.Fatalf("terminal in %q: got %v, %v", folder, cmd, err)
 		}
 	}

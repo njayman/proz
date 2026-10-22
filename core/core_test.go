@@ -38,7 +38,7 @@ func names(t *testing.T, s *Store) []string {
 func TestProjectSurvivesReopen(t *testing.T) {
 	dir := t.TempDir()
 	s := open(t, dir)
-	want := Project{Name: "rt", Path: "/tmp", Programs: []string{"echo"}, Arguments: []string{"hello"}}
+	want := Project{Name: "rt", Path: dir, Programs: []string{"echo"}, Arguments: []string{"hello"}}
 	if err := s.AddProject(want); err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestProjectSurvivesReopen(t *testing.T) {
 	}
 	got := ps[0]
 	got.ID = 0
-	want.Folders = []Folder{{Path: "/tmp", Main: true}}
+	want.Folders = []Folder{{Path: dir, Main: true}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
