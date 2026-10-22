@@ -81,6 +81,7 @@ func TestListJSONContract(t *testing.T) {
         "missing": true
       }
     ],
+    "links": [],
     "programs": [
       "code",
       "claude"
@@ -99,6 +100,7 @@ func TestListJSONContract(t *testing.T) {
         "missing": true
       }
     ],
+    "links": [],
     "arguments": []
   },
   {
@@ -111,6 +113,7 @@ func TestListJSONContract(t *testing.T) {
         "missing": true
       }
     ],
+    "links": [],
     "programs": [
       "nvim"
     ],
@@ -148,6 +151,7 @@ func TestNudgesJSONContract(t *testing.T) {
         "missing": true
       }
     ],
+    "links": [],
     "last_activity": "2026-10-01T09:00:00Z",
     "quiet_days": 10,
     "quiet_seconds": 867600,
@@ -230,6 +234,7 @@ func TestStatusResolvesProjectFromWorkingDirectory(t *testing.T) {
       "missing": false
     }
   ],
+  "links": [],
   "last_activity": "2026-10-01T09:00:00Z",
   "quiet_days": 3,
   "quiet_seconds": 259200,
@@ -278,6 +283,7 @@ func TestMilestoneByNameAndFromWorkingDirectory(t *testing.T) {
       "missing": false
     }
   ],
+  "links": [],
   "last_activity": "2026-10-02T09:00:00Z",
   "quiet_days": 2,
   "quiet_seconds": 172800,
@@ -321,6 +327,7 @@ func TestIdeaCaptureResurfaces(t *testing.T) {
     "name": "habit tracker app",
     "path": "",
     "folders": [],
+    "links": [],
     "last_activity": "2026-10-01T09:00:00Z",
     "quiet_days": 8,
     "quiet_seconds": 691200,

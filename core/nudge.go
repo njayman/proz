@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -131,6 +133,10 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 	if err != nil {
 		return nil, err
 	}
+	links, err := s.links()
+	if err != nil {
+		return nil, err
+	}
 	rows, err := s.db.Query(`SELECT p.id, p.name, `+mainPath+`,
 			max(p.created_at, coalesce(p.last_launch, 0), coalesce(m.created_at, 0)), p.stale_seconds, m.text,
 			p.snoozed_until, p.snoozed_at, p.dropped_at, p.notified_at
@@ -158,6 +164,7 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 			return nil, err
 		}
 		r.st.Folders = folders[r.st.ID]
+		r.st.Links = append([]Link{}, links[r.st.ID]...)
 		found = append(found, r)
 	}
 	rows.Close() // release the single connection before running git
@@ -181,6 +188,7 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 		g       gitState // from the most recently active folder with git
 		hasGit  bool
 		missing []string // folders that are gone; skipped, never removed
+		gone    []string // local links that are gone, the same way
 		work    workState
 		cl      claudeState
 		hasCl   bool
@@ -212,6 +220,18 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 				x.work.uncommitted += seen.work.uncommitted
 				if seen.hasCl && (!x.hasCl || seen.cl.when.After(x.cl.when)) {
 					x.cl, x.hasCl = seen.cl, true
+				}
+			}
+			// A local link's file changes count; a remote one never produces
+			// activity, nor does a whole vault, graph or brain, which many
+			// projects may link; proz's own folders are skipped as for folders.
+			for _, l := range r.st.Links {
+				switch {
+				case !filepath.IsAbs(l.Ref):
+				case l.Missing:
+					x.gone = append(x.gone, l.Ref)
+				case !notesRoot(l.Ref) && !slices.Contains(ignore, l.Ref):
+					x.work.see(walkNewest(l.Ref, now, ignore).when, now)
 				}
 			}
 			x.slow = ctx.Err() != nil
@@ -287,6 +307,9 @@ func (s *Store) statuses(id int64) ([]Status, error) {
 		}
 		for _, f := range x.missing {
 			st.Note.Lines = append(st.Note.Lines, "Folder missing: "+f)
+		}
+		for _, l := range x.gone {
+			st.Note.Lines = append(st.Note.Lines, "Link missing: "+l)
 		}
 		out = append(out, st)
 	}

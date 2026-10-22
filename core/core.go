@@ -24,6 +24,7 @@ type Project struct {
 	Name      string   `json:"name"`
 	Path      string   `json:"path"` // the main folder; empty for an idea
 	Folders   []Folder `json:"folders"`
+	Links     []Link   `json:"links"`
 	Programs  []string `json:"programs,omitempty"`
 	Arguments []string `json:"arguments"`
 }
@@ -87,6 +88,23 @@ var migrations = []string{
 	`CREATE UNIQUE INDEX folders_one_main ON folders (project_id) WHERE main = 1`,
 	`INSERT INTO folders (workspace_id, project_id, path, main, added_at)
 		SELECT workspace_id, id, path, 1, created_at FROM projects WHERE path != ''`, // each project's folder becomes its main folder
+	`CREATE TABLE links (
+		id INTEGER PRIMARY KEY,
+		workspace_id TEXT NOT NULL DEFAULT 'default',
+		project_id INTEGER NOT NULL,
+		kind TEXT NOT NULL,
+		provider TEXT NOT NULL,
+		ref TEXT NOT NULL,
+		added_at INTEGER NOT NULL
+	)`,
+	`CREATE UNIQUE INDEX links_by_project ON links (workspace_id, project_id, ref)`,
+	`CREATE TABLE hosts (
+		workspace_id TEXT NOT NULL DEFAULT 'default',
+		host TEXT NOT NULL,
+		provider TEXT NOT NULL,
+		kind TEXT NOT NULL,
+		PRIMARY KEY (workspace_id, host)
+	)`, // what the user said a host is, the first time proz could not tell
 }
 
 // Open opens (creating if needed) the store in dir. now is the clock every
@@ -294,6 +312,9 @@ func (s *Store) RemoveProject(id int64) error {
 	if _, err := tx.Exec(`DELETE FROM folders WHERE project_id = ? AND workspace_id = ?`, id, DefaultWorkspace); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(`DELETE FROM links WHERE project_id = ? AND workspace_id = ?`, id, DefaultWorkspace); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
@@ -324,6 +345,10 @@ func (s *Store) Projects() ([]Project, error) {
 	if err != nil {
 		return nil, err
 	}
+	links, err := s.links()
+	if err != nil {
+		return nil, err
+	}
 	rows, err := s.db.Query(`SELECT p.id, p.name, `+mainPath+`, p.programs, p.arguments FROM projects p WHERE p.workspace_id = ? ORDER BY p.id`, DefaultWorkspace)
 	if err != nil {
 		return nil, err
@@ -343,6 +368,7 @@ func (s *Store) Projects() ([]Project, error) {
 			return nil, fmt.Errorf("project %d arguments: %w", p.ID, err)
 		}
 		p.Folders = append([]Folder{}, folders[p.ID]...)
+		p.Links = append([]Link{}, links[p.ID]...)
 		out = append(out, p)
 	}
 	return out, rows.Err()

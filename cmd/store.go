@@ -36,12 +36,6 @@ func loadProjects() (projects []Project, err error) {
 	return projects, err
 }
 
-func appendProject(project Project) {
-	if err := withStore(func(s *core.Store) error { return s.AddProject(project) }); err != nil {
-		fmt.Fprintf(os.Stderr, "Error saving project: %v\n", err)
-	}
-}
-
 func updateProject(project Project) error {
 	return withStore(func(s *core.Store) error { return s.UpdateProject(project) })
 }
@@ -130,4 +124,24 @@ func findProject(name string) (p Project, err error) {
 		err = fmt.Errorf("project %q not found", name)
 	}
 	return p, err
+}
+
+// changeProject applies change, then prints project id as 'list --json'
+// prints a project, or the message done gives.
+func changeProject(id int64, asJSON bool, change func(*core.Store) error, done func(core.Project) string) error {
+	var p core.Project
+	if err := withStore(func(s *core.Store) (err error) {
+		if err := change(s); err != nil {
+			return err
+		}
+		p, err = s.Project(id)
+		return err
+	}); err != nil {
+		return err
+	}
+	if asJSON {
+		return printJSON(p)
+	}
+	fmt.Println(done(p))
+	return nil
 }

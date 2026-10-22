@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"sort"
 	"time"
@@ -71,18 +72,29 @@ func readPlace(ctx context.Context, pl place, places []place, now time.Time, ign
 	return x
 }
 
-// ignored is what never counts as the user's activity: proz's own folder
-// and the brain.
+// ignored is what never counts as the user's activity: proz's own folder,
+// the brain, and the notes proz writes there, where they really live (a
+// note may be a symlink into a folder or link that does count).
 func (s *Store) ignored() ([]string, error) {
 	ignore := []string{resolve(s.dir)}
 	brain, err := s.BrainPath()
+	if err != nil || brain == "" {
+		return ignore, err
+	}
+	ignore = append(ignore, resolve(brain))
+	rows, err := s.db.Query(`SELECT brain_note FROM projects WHERE workspace_id = ? AND brain_note IS NOT NULL`, DefaultWorkspace)
 	if err != nil {
 		return nil, err
 	}
-	if brain != "" {
-		ignore = append(ignore, resolve(brain))
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		ignore = append(ignore, resolve(filepath.Join(brain, name)))
 	}
-	return ignore, nil
+	return ignore, rows.Err()
 }
 
 // Checkout is a place a project can be opened in: one of its folders, or
