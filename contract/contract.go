@@ -69,6 +69,12 @@ func NewStatus(st core.Status, milestones []core.Milestone) Status {
 	return out
 }
 
+// ThemeSetting is the launcher's look, as 'proz config theme --json'
+// prints it: system, light or dark.
+type ThemeSetting struct {
+	Theme string `json:"theme"`
+}
+
 // TerminalSetting is the terminal proz opens terminal programs in, as
 // 'proz config terminal --json' prints it. Empty means detect.
 type TerminalSetting struct {

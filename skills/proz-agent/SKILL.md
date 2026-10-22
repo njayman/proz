@@ -55,6 +55,7 @@ Every nudge asks the user one decision. Run these only when the user has made it
 ```bash
 proz resume [project]          # prints the left-off note, then opens the project's program
 proz resume [project] --terminal  # prints the note, then opens a terminal in the project's folder (in a terminal: starts the user's shell there and waits)
+proz resume [project] --agent claude  # prints the note, then starts that agent CLI (claude, codex, gemini, opencode, aider) in the project's folder (or --folder), in a terminal, with none of the project's arguments
 proz resume [project] --folder <path>  # opens in that exact folder or worktree of the project (also with --terminal); any other path fails
 proz snooze [project] [days]   # hide the nudge for N days (7 by default); it returns if still quiet
 proz snooze [project] --until YYYY-MM-DD   # hide it until the start of that local day, for a date the user names
@@ -143,7 +144,7 @@ If the user has set a brain folder (a local markdown folder; `proz config brain-
 
 ## Notifications
 
-`proz check` shows the user an OS notification for each project that just went quiet, once per quiet stretch, sends the weekly email digest when it is due, and refreshes the brain notes; it runs from cron or the tray, so you rarely need it. `proz check --json` prints the projects it notified (same fields as `nudges`). `proz config notifications|tray|email|brain|prompts [on|off]` shows or switches a module; change one only when the user asks. With `prompts` off, notes leave out the last Claude Code prompt. `proz test notification` shows a sample and `proz test email` sends one. Email needs SMTP: the user runs `proz config smtp --host ... --from ... --to ... --password-stdin` themselves; never ask for, handle or pass their password. `proz config smtp` (no flags) shows the settings without the password, and `proz config digest-day [weekday]` shows or sets the digest day (Monday by default). `proz tray` is the user's background tray icon; never start it yourself, and change `proz tray autostart on|off` only when asked.
+`proz check` shows the user an OS notification for each project that just went quiet, once per quiet stretch, sends the weekly email digest when it is due, and refreshes the brain notes; it runs from cron or the tray, so you rarely need it. `proz check --json` prints the projects it notified (same fields as `nudges`). `proz config notifications|tray|email|brain|prompts [on|off]` shows or switches a module; change one only when the user asks. With `prompts` off, notes leave out the last Claude Code prompt. `proz test notification` shows a sample and `proz test email` sends one. Email needs SMTP: the user runs `proz config smtp --host ... --from ... --to ... --password-stdin` themselves; never ask for, handle or pass their password. `proz config smtp` (no flags) shows the settings without the password, and `proz config digest-day [weekday]` shows or sets the digest day (Monday by default). `proz tray` is the user's background tray icon; never start it yourself, and change `proz tray autostart on|off` only when asked. `proz gui` opens the user's launcher window (desktop builds only); never start it yourself, it does nothing the CLI cannot. `proz config theme [system|light|dark] [--json]` shows or sets its look (`{"theme": "system"}`, system follows the desktop's light or dark mode); change it only when the user asks.
 
 ## Register a project
 
@@ -152,16 +153,18 @@ proz <path>                # name = basename(path)
 proz add <name>             # registers $PWD under <name>
 ```
 
-Both run non-interactively when there's no TTY (this shell): they save the project with no program/arguments and print a warning to stderr, rather than hanging on a picker. That's expected, not an error. If the folder is already a folder of another project, or a git worktree of one, it asks whether to track it as a separate project, prints `Not added.` and adds nothing unless the answer is yes; you have no terminal to answer it, so tell the user, and let them run it themselves if they do want a second project. If the user wants a program attached, tell them to run `proz add <name>` themselves in a terminal, or run `proz edit <name>` afterward. When the folder's git `origin` is on GitHub, they offer to link that repository as the project's tracker; with no terminal nothing is linked, so if the user wants it, run `proz link <owner/repo>` yourself.
+Both run non-interactively when there's no TTY (this shell): they save the project with no program/arguments and print a warning to stderr, rather than hanging on a picker. That's expected, not an error. If the folder is already a folder of another project, or a git worktree of one, it asks whether to track it as a separate project, prints `Not added.` and adds nothing unless the answer is yes; you have no terminal to answer it, so tell the user, and let them run it themselves if they do want a second project. If the user names the program they want attached, set it afterward with `proz edit <name> --program <program>`. When the folder's git `origin` is on GitHub, they offer to link that repository as the project's tracker; with no terminal nothing is linked, so if the user wants it, run `proz link <owner/repo>` yourself.
 
 ## Edit / delete
 
 ```bash
-proz edit <name>     # non-interactive: only fills in fields it can read from stdin, otherwise leaves them unchanged
+proz edit <name> --name <new name>                 # rename it
+proz edit <name> --program code --program nvim     # set the programs it opens in, the first being the main one
+proz edit <name> --program ""                      # remove its programs
 proz delete <name>   # or: proz rm <name>
 ```
 
-`proz edit` without a TTY is effectively a no-op unless you pipe values to it; prefer telling the user to run it interactively if they want to change the program or arguments.
+With `--name` or `--program`, `proz edit` changes only those and never prompts; the folder and arguments stay as they were. These are what the launcher's setup view does. Without them, `proz edit` without a TTY is effectively a no-op unless you pipe values to it; tell the user to run it themselves if they want to change the arguments. Rename or change programs only when the user asks.
 
 ## Do not
 

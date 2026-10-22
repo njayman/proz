@@ -73,7 +73,7 @@ var smtpCmd = &cobra.Command{
 				return nil
 			}
 			if !ok {
-				c.Port = 587
+				c.Port = core.DefaultSMTPPort
 			}
 			f := cmd.Flags()
 			for name, dst := range map[string]*string{"host": &c.Host, "username": &c.Username, "from": &c.From, "to": &c.To} {
@@ -85,23 +85,22 @@ var smtpCmd = &cobra.Command{
 			if f.Changed("port") {
 				c.Port = smtpFlags.Port
 			}
-			if ok && c.Password != "" && !smtpPasswordStdin && (f.Changed("host") || f.Changed("username")) {
-				return errors.New("a new host or username needs its password again: add --password-stdin")
-			}
+			var pw *string
 			if smtpPasswordStdin {
-				if c.Password, err = readPassword(); err != nil {
+				p, err := readPassword()
+				if err != nil {
 					return err
 				}
+				pw = &p
 			}
-			if err := s.SetSMTP(c); err != nil {
+			if err := s.SaveSMTP(c, pw); errors.Is(err, core.ErrPasswordAgain) {
+				return fmt.Errorf("%w: add --password-stdin", err)
+			} else if err != nil {
 				return err
 			}
 			if ok { // an edit keeps email as it was
 				fmt.Println("Saved.")
 				return nil
-			}
-			if err := s.SetModule(core.ModuleEmail, true); err != nil {
-				return err
 			}
 			fmt.Println("Saved. Email is on; send a sample with: proz test email")
 			return nil

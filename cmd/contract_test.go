@@ -25,7 +25,14 @@ import (
 func execute(args ...string) error {
 	var reset func(*cobra.Command)
 	reset = func(c *cobra.Command) {
-		c.Flags().VisitAll(func(f *pflag.Flag) { f.Value.Set(f.DefValue); f.Changed = false })
+		c.Flags().VisitAll(func(f *pflag.Flag) {
+			if v, ok := f.Value.(pflag.SliceValue); ok { // Set appends to a slice
+				v.Replace(nil)
+			} else {
+				f.Value.Set(f.DefValue)
+			}
+			f.Changed = false
+		})
 		for _, sub := range c.Commands() {
 			reset(sub)
 		}
@@ -811,6 +818,28 @@ func TestConfigTerminalJSONContract(t *testing.T) {
 	}
 }
 
+// The launcher's light or dark look, also set with `proz config theme`.
+func TestConfigThemeJSONContract(t *testing.T) {
+	configDir(t)
+	var got map[string]string
+	if err := json.Unmarshal([]byte(run(t, "config", "theme", "--json")), &got); err != nil || got["theme"] != "system" {
+		t.Fatalf("unset: want system, got %v, %v", got, err)
+	}
+	if err := json.Unmarshal([]byte(run(t, "config", "theme", "dark", "--json")), &got); err != nil || got["theme"] != "dark" {
+		t.Fatalf("set: got %v, %v", got, err)
+	}
+	if out := strings.TrimSpace(run(t, "config", "theme")); out != "dark" {
+		t.Fatalf("plain: got %q", out)
+	}
+	if err := execute("config", "theme", "blue"); err == nil || !strings.Contains(err.Error(), "system, light or dark") {
+		t.Fatalf("want a refusal naming the choices, got %v", err)
+	}
+	run(t, "config", "theme", "system")
+	if out := strings.TrimSpace(run(t, "config", "theme")); out != "system" {
+		t.Fatalf("back to system: got %q", out)
+	}
+}
+
 // Agents fix a wrong guess with `proz config needs-terminal --json`.
 func TestConfigNeedsTerminalJSONContract(t *testing.T) {
 	configDir(t)
@@ -832,5 +861,64 @@ func TestConfigNeedsTerminalJSONContract(t *testing.T) {
 	check(run(t, "config", "needs-terminal", "nvim", "auto", "--json"), map[string]any{"program": "nvim", "needs_terminal": true, "set": false})
 	if err := execute("config", "needs-terminal", "nvim", "maybe"); err == nil {
 		t.Fatal("want an error for maybe")
+	}
+}
+
+// The launcher's "Start Claude Code here" from the CLI: the agent starts in
+// the project's folder, in the user's terminal, without the project's arguments.
+func TestResumeAgentStartsTheAgentCLIInTheProjectFolder(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake programs are shell scripts")
+	}
+	dir := configDir(t)
+	project := filepath.Join(dir, "web")
+	os.MkdirAll(project, 0775)
+	os.MkdirAll(filepath.Join(dir, "proz"), 0775)
+	os.WriteFile(filepath.Join(dir, "proz", "store.json"), []byte(`[{"name": "web", "path": `+jsonString(project)+`, "programs": ["code"], "arguments": ["--new-window"]}]`), 0644)
+	bin, record := t.TempDir(), filepath.Join(t.TempDir(), "ran")
+	os.WriteFile(filepath.Join(bin, "fake-term"), []byte("#!/bin/sh\nshift\nexec \"$@\"\n"), 0755) // drops its "--"
+	os.WriteFile(filepath.Join(bin, "claude"), []byte("#!/bin/sh\necho \"$(pwd) $*\" > "+record+"\n"), 0755)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	run(t, "config", "terminal", "fake-term --")
+
+	run(t, "resume", "web", "--agent", "claude")
+	var ran []byte
+	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline) && len(ran) == 0; time.Sleep(20 * time.Millisecond) {
+		ran, _ = os.ReadFile(record)
+	}
+	if got := strings.TrimSpace(string(ran)); got != project+" " && got != project {
+		t.Fatalf("want claude run in %s with no arguments, got %q", project, got)
+	}
+	if err := execute("resume", "web", "--agent", "claude", "--terminal"); err == nil {
+		t.Fatal("--agent and --terminal together should fail")
+	}
+}
+
+// Agents rename a project and set its programs without a terminal, as the
+// launcher's setup does.
+func TestEditWithFlagsSetsNameAndProgramsWithoutPrompting(t *testing.T) {
+	configDir(t)
+	run(t, "idea", "habit tracker")
+	run(t, "edit", "habit tracker", "--name", "habits", "--program", "code", "--program", "nvim")
+	var got []Project
+	if err := json.Unmarshal([]byte(run(t, "list", "--json")), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Name != "habits" || !reflect.DeepEqual(got[0].Programs, []string{"code", "nvim"}) {
+		t.Fatalf("got %+v", got)
+	}
+	run(t, "edit", "habits", "--program", "")
+	got = nil
+	if err := json.Unmarshal([]byte(run(t, "list", "--json")), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got[0].Name != "habits" || len(got[0].Programs) != 0 {
+		t.Fatalf("--program \"\" clears them and keeps the name: %+v", got)
+	}
+	if execute("edit", "nope", "--name", "x") == nil {
+		t.Fatal("a missing project must fail")
+	}
+	if execute("edit", "habits", "--name", " ") == nil {
+		t.Fatal("an empty name must fail")
 	}
 }

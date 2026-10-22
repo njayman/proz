@@ -187,7 +187,7 @@ func (s *Store) importJSON() error {
 			return err
 		}
 		for _, p := range legacy {
-			if err := insertProject(tx, p, s.now()); err != nil {
+			if _, err := insertProject(tx, p, s.now()); err != nil {
 				return err
 			}
 		}
@@ -245,24 +245,33 @@ func (s *Store) importOnce(file string, load func(*sql.Tx, []byte) error) error 
 }
 
 func (s *Store) AddProject(p Project) error {
-	return insertProject(s.db, p, s.now())
+	_, err := s.NewProject(p)
+	return err
+}
+
+// NewProject adds p and returns it with the ID the store gave it.
+func (s *Store) NewProject(p Project) (Project, error) {
+	var err error
+	p.ID, err = insertProject(s.db, p, s.now())
+	return p, err
 }
 
 type execer interface {
 	Exec(string, ...any) (sql.Result, error)
 }
 
-func insertProject(db execer, p Project, now time.Time) error {
+// insertProject adds p with its path as the main folder and returns its ID.
+func insertProject(db execer, p Project, now time.Time) (int64, error) {
 	res, err := db.Exec(`INSERT INTO projects (workspace_id, name, path, programs, arguments, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
 		DefaultWorkspace, p.Name, p.Path, encode(p.Programs), encode(p.Arguments), now.Unix())
 	if err != nil {
-		return err
+		return 0, err
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
-		return err
+		return 0, err
 	}
-	return replaceMainFolder(db, id, p.Path, now)
+	return id, replaceMainFolder(db, id, p.Path, now)
 }
 
 var ErrNotFound = errors.New("project not found")

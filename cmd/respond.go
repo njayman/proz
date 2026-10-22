@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -24,12 +25,17 @@ var resumeCmd = &cobra.Command{
 		"project's folder instead: your shell here when run in a terminal, else\n" +
 		"a new terminal window. With several folders or worktrees it asks which,\n" +
 		"starting at the one worked in last (esc opens nothing); --folder opens\n" +
-		"an exact one, and without a terminal the main folder opens.",
+		"an exact one, and without a terminal the main folder opens. --agent\n" +
+		"claude (or codex, gemini, opencode, aider) starts that agent CLI in the\n" +
+		"folder, in a terminal.",
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		p, err := resolveProject(args)
 		if err != nil {
 			return err
+		}
+		if resumeAgent != "" && resumeTerminal {
+			return errors.New("--agent already opens a terminal; use one of --agent and --terminal")
 		}
 		var st core.Status
 		if err := withStore(func(s *core.Store) (err error) {
@@ -61,12 +67,16 @@ var resumeCmd = &cobra.Command{
 		if resumeTerminal {
 			return launchTerminal(p, folder)
 		}
+		if resumeAgent != "" {
+			return runLaunch(func(s *core.Store, attached bool) (*exec.Cmd, error) { return s.LaunchAgent(p, folder, resumeAgent, attached) })
+		}
 		return launch(p, folder, chooseProgram(p))
 	},
 }
 
 var (
 	resumeTerminal bool
+	resumeAgent    string
 	resumeFolder   string
 )
 
@@ -91,8 +101,8 @@ var snoozeCmd = &cobra.Command{
 		}
 		if n > 0 {
 			if d, err := strconv.Atoi(args[n-1]); err == nil {
-				if d < 1 || d > 36500 {
-					return fmt.Errorf("days must be from 1 to 36500, got %d", d)
+				if d < 1 || d > core.MaxDays {
+					return fmt.Errorf("days must be from 1 to %d, got %d", core.MaxDays, d)
 				}
 				days, args = d, args[:n-1]
 			}
@@ -200,6 +210,7 @@ func init() {
 	archivedCmd.Flags().BoolVar(&archivedJSON, "json", false, "print archived projects as JSON")
 	snoozeCmd.Flags().StringVar(&snoozeUntil, "until", "", "snooze to the start of this local date (YYYY-MM-DD)")
 	resumeCmd.Flags().BoolVar(&resumeTerminal, "terminal", false, "open a terminal in the project's folder instead of its program")
+	resumeCmd.Flags().StringVar(&resumeAgent, "agent", "", "start this agent CLI (claude, codex, ...) in the project's folder instead of its program")
 	resumeCmd.Flags().StringVar(&resumeFolder, "folder", "", "open in this folder or worktree of the project instead of asking")
 	rootCmd.AddCommand(resumeCmd, snoozeCmd, dropCmd, restoreCmd, archivedCmd)
 }

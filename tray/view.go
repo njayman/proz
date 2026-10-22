@@ -16,10 +16,11 @@ import (
 
 // View is everything the tray shows.
 type View struct {
-	Dot     bool
-	Tooltip string
-	Items   []Item
-	Loading bool // projects are still being read: the menu says so
+	Dot           bool
+	Tooltip       string
+	Items         []Item
+	Loading       bool // projects are still being read: the menu says so
+	OfferLauncher bool // the menu starts with Open proz
 }
 
 // Item is one quiet project in the menu.
@@ -79,9 +80,11 @@ func snoozeAction(d Deps, id int64, days int, show func()) func() {
 func snapshot(d Deps) (View, error) {
 	nudges, err := d.Nudges()
 	if err != nil {
-		return View{Tooltip: "proz: " + err.Error()}, err
+		return View{Tooltip: "proz: " + err.Error(), OfferLauncher: d.OpenLauncher != nil}, err
 	}
-	return Render(nudges), nil
+	v := Render(nudges)
+	v.OfferLauncher = d.OpenLauncher != nil
+	return v, nil
 }
 
 // Icon draws the tray icon: a ring, plus a red dot when something went

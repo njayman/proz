@@ -104,8 +104,9 @@ func runLaunch(get func(s *core.Store, attached bool) (*exec.Cmd, error)) error 
 
 // startDetached starts cmd on its own. In a long-running process (the tray)
 // it is reaped when it exits, so no zombie lingers; when proz exits first,
-// init reaps it.
+// init reaps it. It runs in its own session, so it outlives the tray.
 func startDetached(cmd *exec.Cmd) error {
+	ownSession(cmd)
 	if err := cmd.Start(); err != nil {
 		return err
 	}

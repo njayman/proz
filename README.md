@@ -77,9 +77,9 @@ When the folder's git `origin` is on GitHub, it then offers to link the reposito
 
 Deletes a project. Without a name, opens the picker to select one.
 
-### `proz edit <name>`
+### `proz edit <name> [--name <new name>] [--program <program>]...`
 
-TUI form to update name, programs (space-separated), or arguments. Falls back to text prompts if the TUI is unavailable.
+TUI form to update name, programs (space-separated), or arguments. Falls back to text prompts if the TUI is unavailable. With `--name` or `--program` (repeat it for several; `--program ""` removes them) it changes just those without prompting, the way the launcher's setup does.
 
 ### `proz rm <name>`
 
@@ -107,11 +107,11 @@ Links a project to the tracker or brain it already uses, so agents know where it
 
 ### `proz resume | snooze | drop | restore [project]`
 
-The answers to a nudge. `resume` prints the left-off note and opens the project's program. `snooze [project] [days]` hides the nudge for N days (7 by default), and `snooze [project] --until 2026-11-09` hides it until the start of that day; either way it comes back if the project is still quiet. `drop` archives the project until any new activity revives it, and `restore` brings it back by hand. `proz archived [--json]` lists dropped projects.
+The answers to a nudge. `resume` prints the left-off note and opens the project's program. `resume --terminal` opens a terminal in its folder instead, and `resume --agent claude` (or `codex`, `gemini`, `opencode`, `aider`) starts that agent CLI there. `snooze [project] [days]` hides the nudge for N days (7 by default), and `snooze [project] --until 2026-11-09` hides it until the start of that day; either way it comes back if the project is still quiet. `drop` archives the project until any new activity revives it, and `restore` brings it back by hand. `proz archived [--json]` lists dropped projects.
 
 ### `proz tray`
 
-Runs in the background with a tray icon: a ring, with a red dot while any project is quiet. It checks every 15 minutes and notifies once per quiet stretch, like `proz check`. Its menu lists each quiet project with its short note; each has Resume (opens its first program, no terminal), Snooze (Tomorrow, 3 days, 1 week, 2 weeks or 1 month) and Drop. `proz tray autostart on|off` starts it at login (an autostart entry on Linux, a LaunchAgent on macOS, a registry Run value on Windows). `proz config tray off` removes it from login, and a running tray quits within 30 seconds.
+Runs in the background with a tray icon: a ring, with a red dot while any project is quiet. It checks every 15 minutes and notifies once per quiet stretch, like `proz check`. In desktop builds its menu starts with Open proz, which opens the launcher (`proz gui`). The menu lists each quiet project with its short note; each has Resume (opens its first program, no terminal), Snooze (Tomorrow, 3 days, 1 week, 2 weeks or 1 month) and Drop. `proz tray autostart on|off` starts it at login (an autostart entry on Linux, a LaunchAgent on macOS, a registry Run value on Windows). `proz config tray off` removes it from login, and a running tray quits within 30 seconds.
 
 Release binaries include the tray. Building yourself: `go build -tags tray .` (on macOS this needs cgo). A build without the tag works fully, minus the tray. On GNOME the icon needs the AppIndicator extension.
 
@@ -169,6 +169,10 @@ The digest goes out on Monday by default (`proz config digest-day friday` change
 ### `proz config stale-days [days] [--project <name>]`
 
 Prints the stale threshold in days, or sets it. With `--project`, reads or sets that project's own threshold; `0` removes the override.
+
+### `proz config theme [system|light|dark] [--json]`
+
+Shows or sets how the launcher (`proz gui`) looks. `system` (the default) follows your desktop's light or dark mode; the launcher's Dark check box sets `light` or `dark`.
 
 ### `proz completion [bash|zsh|fish|powershell]`
 

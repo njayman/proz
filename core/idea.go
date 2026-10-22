@@ -11,11 +11,23 @@ import (
 // It resurfaces like any project, from registration, launches and milestones.
 // It returns the idea's name: text on one line, spaces collapsed.
 func (s *Store) AddIdea(text string) (string, error) {
-	name := strings.Join(strings.Fields(text), " ")
-	if name == "" {
-		return "", errors.New("idea text is empty")
+	name, err := ProjectName(text)
+	if err != nil {
+		return "", err
 	}
 	return name, s.AddProject(Project{Name: name})
+}
+
+// ErrNoName refuses a project or idea with a blank name.
+var ErrNoName = errors.New("a project needs a name")
+
+// ProjectName is text as a project's name: one line, spaces collapsed.
+func ProjectName(text string) (string, error) {
+	name := strings.Join(strings.Fields(text), " ")
+	if name == "" {
+		return "", ErrNoName
+	}
+	return name, nil
 }
 
 // IdeaFor returns the idea whose name matches the folder dir's name, so

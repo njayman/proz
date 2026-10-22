@@ -39,6 +39,10 @@ const (
 	StateArchived State = "archived" // dropped, and nothing has happened since
 )
 
+// MaxDays is the most days a threshold or snooze takes, so a count of days
+// never overflows a duration.
+const MaxDays = 36500
+
 // StaleThreshold is how long a project may be quiet before it nudges.
 func (s *Store) StaleThreshold() (time.Duration, error) {
 	var sec int64
