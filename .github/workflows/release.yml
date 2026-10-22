@@ -54,7 +54,7 @@ jobs:
       - name: Build Go binary
         run: |
           mkdir -p dist
-          go build -trimpath -tags tray -ldflags="-s -w" -o dist/${{ env.BINARY_NAME }} .
+          go build -trimpath -tags tray -ldflags="-s -w -X github.com/njayman/proz/cmd.version=${GITHUB_REF_NAME#v}" -o dist/${{ env.BINARY_NAME }} .
           ls -lh dist/
         env:
           GOOS: ${{ matrix.goos }}
@@ -78,9 +78,33 @@ jobs:
           name: ${{ env.ARCHIVE_BASE_NAME }}
           path: dist/${{ env.ARCHIVE_FULL_NAME }}
 
+  # The desktop build needs cgo, so the installer builds on Windows itself.
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build the installer
+        run: scripts/package-windows.ps1 -Version ($env:GITHUB_REF_NAME.TrimStart('v'))
+
+      - name: Install, upgrade and uninstall it before releasing it
+        run: scripts/check-windows-installer.ps1 dist\proz-setup-windows-amd64.exe
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/proz-setup-windows-amd64.exe
+
   release:
     permissions: write-all
-    needs: build
+    needs: [build, windows-installer]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -91,21 +115,18 @@ jobs:
         with:
           path: artifacts
 
-      - name: List downloaded artifacts for debugging
-        id: prepare_release_assets
+      - name: Gather the release files and their checksums
         run: |
-          find artifacts -type f -print
+          mkdir release
+          find artifacts -type f -exec mv {} release/ \;
+          cd release
+          sha256sum -- * > checksums.txt
+          cat checksums.txt
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          # tag_name: ${{ github.ref_name }}
-          # run: |
-          #   ls
-          #   ls artifacts
-          files: |
-            artifacts/**/*.zip
-            artifacts/**/*.tar.gz
+          files: release/*
 
           draft: false
           prerelease: false

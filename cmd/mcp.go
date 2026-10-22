@@ -20,11 +20,7 @@ var mcpCmd = &cobra.Command{
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		open := func() (*core.Store, error) { return core.Open(utils.GetConfigFolder(), time.Now) }
-		version := rootCmd.Version
-		if version == "" {
-			version = "dev"
-		}
-		return mcpserver.New(open, version).Run(context.Background(), &mcp.StdioTransport{})
+		return mcpserver.New(open, rootCmd.Version).Run(context.Background(), &mcp.StdioTransport{})
 	},
 }
 

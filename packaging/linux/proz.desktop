@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=proz
+GenericName=Project launcher
+Comment=Open your projects and pick up where you left off
+Exec=proz gui
+Icon=proz
+Terminal=false
+Categories=Development;
+Keywords=projects;ideas;launcher;
