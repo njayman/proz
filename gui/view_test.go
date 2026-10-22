@@ -471,10 +471,14 @@ func TestTheFilterBoxAndListNameThemselvesToScreenReaders(t *testing.T) {
 func TestCtrlEditingKeysStillWorkInTheFilterBox(t *testing.T) {
 	slowStatuses(t)
 	w, _, _ := launcher(t, core.Project{Name: "web", Path: "/src/web"}, core.Project{Name: "api", Path: "/src/api"})
-	typeText(w, "webzzz") // matches nothing until the word is deleted
-	w.Canvas().Focused().(fyne.Shortcutable).TypedShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyBackspace, Modifier: fyne.KeyModifierShortcutDefault})
+	typeText(w, "webzzz")           // matches nothing until the word is deleted
+	word := fyne.KeyModifierControl // Option+Backspace deletes a word on macOS, as in Fyne's entry
+	if runtime.GOOS == "darwin" {
+		word = fyne.KeyModifierAlt
+	}
+	w.Canvas().Focused().(fyne.Shortcutable).TypedShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyBackspace, Modifier: word})
 	if s := texts(w); !slices.Contains(s, "web") || !slices.Contains(s, "api") {
-		t.Fatalf("Ctrl+Backspace must delete the filter's last word: %q", s)
+		t.Fatalf("deleting a word must delete the filter's last word: %q", s)
 	}
 }
 
